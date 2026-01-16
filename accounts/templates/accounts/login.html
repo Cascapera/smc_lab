@@ -1,0 +1,26 @@
+﻿{% extends "base.html" %}
+
+{% block title %}Entrar | Trader Portal{% endblock %}
+
+{% block content %}
+<h1>Entrar</h1>
+<form method="post" novalidate>
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    <p>
+        {{ form.username.label_tag }}
+        {{ form.username }}
+    </p>
+    <p>
+        {{ form.password.label_tag }}
+        {{ form.password }}
+    </p>
+    {% if form.remember_me %}
+    <p>
+        {{ form.remember_me }} {{ form.remember_me.label_tag }}
+    </p>
+    {% endif %}
+    <button type="submit">Entrar</button>
+</form>
+<p>Ainda nÃ£o tem conta? <a href="{% url 'accounts:register' %}">Cadastre-se</a></p>
+{% endblock %}

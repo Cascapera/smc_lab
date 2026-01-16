@@ -1,0 +1,225 @@
+﻿{% extends "base.html" %}
+
+{% block title %}Criar conta | Trader Portal{% endblock %}
+
+{% block content %}
+<style>
+  :root{
+    --muted: rgba(255,255,255,.72);
+    --line: rgba(255,255,255,.10);
+    --text: rgba(255,255,255,.92);
+    --max: 1080px;
+  }
+  .wrap{
+    width:min(var(--max), 100%);
+    margin: 0 auto;
+    padding: 10px 0 30px;
+  }
+  .card{
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.10);
+    border-radius: 18px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.45);
+    overflow:hidden;
+  }
+  .card-head{
+    padding: 24px 26px;
+    border-bottom: 1px solid var(--line);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap: 10px;
+    flex-wrap:wrap;
+  }
+  .title{
+    margin:0;
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing:.04em;
+  }
+  .subtitle{
+    margin: 6px 0 0;
+    color: var(--muted);
+    font-size: 14px;
+    letter-spacing:.01em;
+  }
+  .content{
+    padding: 26px;
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  form{
+    margin:0;
+    grid-column: 1 / -1;
+  }
+  h2{
+    margin: 0 0 10px;
+    font-size: 16px;
+    letter-spacing:.03em;
+    text-transform: uppercase;
+    color: #cbd5e1;
+  }
+  .grid{
+    display:grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px 20px;
+    justify-items: flex-start;
+  }
+  .field{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+  label{
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing:.02em;
+    color: var(--text);
+  }
+  input, select, textarea{
+    width:100%;
+    max-width: 320px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.14);
+    background: rgba(0,0,0,.20);
+    color: var(--text);
+    font-size: 14px;
+  }
+  .field.narrow input{
+    max-width: 240px;
+  }
+  /* Harmoniza dropdown dos selects com o tema escuro */
+  select option{
+    background: #0f172a;
+    color: #e2e8f0;
+  }
+  textarea{ min-height: 80px; }
+  small{ color: var(--muted); }
+  .errors{ color:#f87171; font-size:13px; margin: 4px 0 0; }
+  .actions-bottom{
+    margin-top: 18px;
+    display:flex;
+    gap:12px;
+    align-items:center;
+    flex-wrap:wrap;
+  }
+  .btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.16);
+    background: rgba(255,255,255,.06);
+    color: var(--text);
+    font-weight: 700;
+    letter-spacing:.05em;
+    text-decoration:none;
+    font-size: 12px;
+  }
+  .btn-primary{
+    border-color: rgba(34,211,238,.35);
+    background: linear-gradient(180deg, rgba(59,130,246,.95), rgba(34,211,238,.80));
+    color: #03111A;
+    box-shadow: 0 18px 40px rgba(34,211,238,.18);
+  }
+  .note{ color: var(--muted); font-size: 13px; }
+  @media (max-width: 900px){
+    .content{ grid-template-columns: 1fr; }
+    .grid{ grid-template-columns: 1fr; }
+  }
+  .checkboxes{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px 12px;
+    margin-top:12px;
+    align-items:center;
+  }
+  .checkboxes label{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    font-weight:600;
+    margin:0;
+  }
+  .checkboxes input[type="checkbox"]{
+    width:auto;
+    max-width:none;
+  }
+</style>
+
+<div class="wrap">
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h1 class="title">Criar conta</h1>
+        <p class="subtitle">Preencha seus dados de acesso e perfil de trader.</p>
+      </div>
+      <a class="btn" href="{% url 'landing' %}">Voltar</a>
+    </div>
+    <div class="content">
+      <form method="post" novalidate>
+        {% csrf_token %}
+        {{ profile_form.timezone }}
+
+        <h2>Dados de acesso</h2>
+        {{ user_form.non_field_errors }}
+        <div class="grid">
+          {% for field in user_form %}
+            <div class="field{% if field.name == 'password1' or field.name == 'password2' %} narrow{% endif %}">
+              <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+              {% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}
+              {% for error in field.errors %}<div class="errors">{{ error }}</div>{% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+
+        <h2>Perfil do trader</h2>
+        {{ profile_form.non_field_errors }}
+        <div class="grid">
+          {% for field in profile_form %}
+            {% if field.name == "email_opt_in" or field.name == "terms_accepted" or field.name == "privacy_accepted" or field.name == "timezone" %}
+              {# pula para renderizar depois #}
+            {% else %}
+              <div class="field">
+                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}
+                {% for error in field.errors %}<div class="errors">{{ error }}</div>{% endfor %}
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+
+        <div class="checkboxes">
+          <label for="{{ profile_form.email_opt_in.id_for_label }}">
+            {{ profile_form.email_opt_in }}
+            <span>{{ profile_form.email_opt_in.label }}</span>
+          </label>
+          {% for error in profile_form.email_opt_in.errors %}<div class="errors">{{ error }}</div>{% endfor %}
+
+          <label for="{{ profile_form.terms_accepted.id_for_label }}">
+            {{ profile_form.terms_accepted }}
+            <span>{{ profile_form.terms_accepted.label }}</span>
+          </label>
+          {% for error in profile_form.terms_accepted.errors %}<div class="errors">{{ error }}</div>{% endfor %}
+
+          <label for="{{ profile_form.privacy_accepted.id_for_label }}">
+            {{ profile_form.privacy_accepted }}
+            <span>{{ profile_form.privacy_accepted.label }}</span>
+          </label>
+          {% for error in profile_form.privacy_accepted.errors %}<div class="errors">{{ error }}</div>{% endfor %}
+        </div>
+
+        <div class="actions-bottom">
+          <button class="btn btn-primary" type="submit">Criar conta</button>
+          <span class="note">Já tem conta? <a href="{% url 'accounts:login' %}">Entrar</a></span>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

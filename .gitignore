@@ -1,0 +1,46 @@
+# Ambientes virtuais
+.venv/
+venv/
+env/
+ENV/
+
+# Bytecode / cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Configurações locais
+*.env
+.env.*
+
+# Logs
+*.log
+
+# Django specific
+db.sqlite3
+media/
+staticfiles/
+
+# IDEs/editores
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testes e cobertura
+htmlcov/
+.coverage
+.cache/
+pytest_cache/
+
+# pip / build
+pip-wheel-metadata/
+*.egg-info/
+dist/
+build/
+
+# Painel SMC artefatos grandes
+painel_smc/dist/
+painel_smc/build/
+painel_smc/SMCTrend.zip
+painel_smc/SMCTrend.exe

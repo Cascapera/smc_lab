@@ -1,0 +1,418 @@
+﻿{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Registrar nova operação | Trader Portal{% endblock %}
+
+{% block content %}
+<style>
+  :root{
+    --muted: rgba(255,255,255,.72);
+    --line: rgba(255,255,255,.10);
+    --text: rgba(255,255,255,.92);
+  }
+  .page-trade{
+    padding: 16px 0 32px;
+  }
+  .card{
+    width: 100%;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.10);
+    border-radius: 18px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.45);
+    overflow:hidden;
+  }
+  .card-head{
+    padding: 22px 26px;
+    border-bottom: 1px solid var(--line);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap: 10px;
+  }
+  .title{
+    margin:0;
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing:.04em;
+  }
+  .actions{
+    display:flex;
+    gap:10px;
+    align-items:center;
+    flex-wrap: wrap;
+  }
+  .btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.16);
+    background: rgba(255,255,255,.06);
+    color: var(--text);
+    font-weight: 700;
+    letter-spacing:.05em;
+    text-decoration:none;
+    font-size: 12px;
+  }
+  .btn:hover{
+    transform: translateY(-1px);
+    background: rgba(255,255,255,.10);
+    border-color: rgba(255,255,255,.22);
+  }
+  .btn-primary{
+    border-color: rgba(34,211,238,.35);
+    background: linear-gradient(180deg, rgba(59,130,246,.95), rgba(34,211,238,.80));
+    color: #03111A;
+    box-shadow: 0 18px 40px rgba(34,211,238,.18);
+  }
+  .content{
+    padding: 26px;
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  form{
+    margin:0;
+    grid-column: 1 / -1;
+  }
+  .grid{
+    display:grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px 14px;
+  }
+  .field{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+  label{
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing:.02em;
+    color: var(--text);
+  }
+  input, select, textarea{
+    width:100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.14);
+    background: rgba(0,0,0,.20);
+    color: var(--text);
+    font-size: 14px;
+  }
+  /* Harmoniza dropdown do select com o tema escuro */
+  select option{
+    background: #0f172a;
+    color: #e2e8f0;
+  }
+  textarea{ min-height: 80px; }
+  small{ color: var(--muted); }
+  .errors{ color:#f87171; font-size:13px; margin: 4px 0 0; }
+  .actions-bottom{
+    margin-top: 16px;
+    display:flex;
+    gap:12px;
+    align-items:center;
+    flex-wrap:wrap;
+  }
+  .note{ color: var(--muted); font-size: 13px; }
+  @media (max-width: 900px){
+    .content{ grid-template-columns: 1fr; }
+    .grid{ grid-template-columns: 1fr; }
+  }
+</style>
+
+<section class="page-trade">
+  <div class="card">
+    <div class="card-head">
+      <h1 class="title">Registrar nova operação</h1>
+      <div class="actions">
+        <a class="btn" href="{% url 'trades:dashboard' %}">Dashboard</a>
+        <a class="btn" href="{% url 'landing' %}">Voltar</a>
+      </div>
+    </div>
+    <div class="content">
+      <form method="post" enctype="multipart/form-data" novalidate>
+        {% csrf_token %}
+        {{ form.non_field_errors }}
+        <div class="grid">
+          {% for field in form %}
+            {% if field.name == "is_public" %}
+              <div class="field" style="flex-direction:row;align-items:center;gap:8px;">
+                <label style="display:flex;align-items:center;gap:8px;margin:0;">
+                  {{ field }}
+                  <span>Exibir publicamente?</span>
+                </label>
+                {% for error in field.errors %}<div class="errors">{{ error }}</div>{% endfor %}
+              </div>
+            {% elif field.name == "display_as_anonymous" %}
+              <div class="field" style="flex-direction:row;align-items:center;gap:8px;">
+                <label style="display:flex;align-items:center;gap:8px;margin:0;">
+                  {{ field }}
+                  <span>Publicar como anônimo</span>
+                </label>
+                {% for error in field.errors %}<div class="errors">{{ error }}</div>{% endfor %}
+              </div>
+            {% else %}
+              <div class="field">
+                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}
+                {% for error in field.errors %}<div class="errors">{{ error }}</div>{% endfor %}
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+        <div class="actions-bottom">
+          <button class="btn btn-primary" type="submit">Salvar operação</button>
+          <span class="note"><a href="{% url 'landing' %}">Voltar para a página inicial</a></span>
+        </div>
+      </form>
+    </div>
+  </div>
+</section>
+
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const htfColors = {
+      "5": { bg: "#ffe5a0", fg: "#0f172a" },
+      "15": { bg: "#d4edbc", fg: "#0f172a" },
+      "60": { bg: "#11734b", fg: "#f8fafc" },
+      "240": { bg: "#11734b", fg: "#f8fafc" },
+    };
+    const trendColors = {
+      bullish: { bg: "#11734b", fg: "#f8fafc" }, // A favor
+      range: { bg: "#ffe5a0", fg: "#0f172a" },   // Lateral
+      bearish: { bg: "#b10202", fg: "#f8fafc" }, // Contra
+    };
+    const smcColors = {
+      optimistic: { bg: "#11734b", fg: "#f8fafc" }, // A favor
+      neutral: { bg: "#ffe5a0", fg: "#0f172a" },    // Neutro
+      pessimistic: { bg: "#b10202", fg: "#f8fafc" } // Contra
+    };
+    const premiumColors = {
+      sell_premium: { bg: "#11734b", fg: "#f8fafc" }, // Venda Prêmio
+      buy_discount: { bg: "#11734b", fg: "#f8fafc" }, // Compra Desconto
+      buy_premium: { bg: "#b10202", fg: "#f8fafc" },  // Compra Prêmio
+      sell_discount: { bg: "#b10202", fg: "#f8fafc" },// Venda Desconto
+    };
+    const regionColors = {
+      primary: { bg: "#11734b", fg: "#f8fafc" },   // Primária
+      secondary: { bg: "#ffe5a0", fg: "#0f172a" }, // Secundária
+      none: { bg: "#b10202", fg: "#f8fafc" },      // N/D
+    };
+    const entryColors = {
+      anticipated: { bg: "#b10202", fg: "#f8fafc" }, // Ant.
+      confirmed: { bg: "#11734b", fg: "#f8fafc" },   // Conf.
+      lateral: { bg: "#ffe5a0", fg: "#0f172a" },     // Lat.
+    };
+    const setupColors = {
+      flip: { bg: "#ffcfc9", fg: "#0f172a" },
+      choch: { bg: "#ffe5a0", fg: "#0f172a" },
+      continuation: { bg: "#11734b", fg: "#f8fafc" },
+      liquidity: { bg: "#11734b", fg: "#f8fafc" },
+      pd: { bg: "#e6cff2", fg: "#0f172a" },
+      fvg: { bg: "#ffc8aa", fg: "#0f172a" },
+      top_failure: { bg: "#e6cff2", fg: "#0f172a" },   // Falha de topo
+      bottom_failure: { bg: "#e6cff2", fg: "#0f172a" },// Falha de fundo
+      double_top: { bg: "#e6cff2", fg: "#0f172a" },
+      double_bottom: { bg: "#e6cff2", fg: "#0f172a" },
+      none: { bg: "#b10202", fg: "#f8fafc" },          // N/D
+      wedge: { bg: "#ffcfc9", fg: "#0f172a" },         // Cunha
+    };
+    const triggerColors = {
+      region: { bg: "#d4edbc", fg: "#0f172a" },         // Região
+      passagem: { bg: "#11734b", fg: "#f8fafc" },       // Passagem
+      martelo_bf: { bg: "#ffc8aa", fg: "#0f172a" },     // Mart + BF
+      fffd: { bg: "#bfe1f6", fg: "#0f172a" },           // FFFD
+      padrao: { bg: "#e6cff2", fg: "#0f172a" },         // Padrão
+      none: { bg: "#b10202", fg: "#f8fafc" },           // N/A
+      rocadinha: { bg: "#ffcfc9", fg: "#0f172a" },      // Roçadinha
+      barra_ignorada: { bg: "#ffe5a0", fg: "#0f172a" }, // Barra Ignorada
+      gift: { bg: "#ffc8aa", fg: "#0f172a" },           // Gift
+    };
+    const partialColors = {
+      yes_pos: { bg: "#11734b", fg: "#f8fafc" },      // SIM + 5x1
+      yes_neg: { bg: "#d4edbc", fg: "#0f172a" },      // SIM - 5x1
+      no_done: { bg: "#11734b", fg: "#f8fafc" },      // NÃO
+      not_available: { bg: "#ffe5a0", fg: "#0f172a" } // Sem parcial
+    };
+    const resultColors = {
+      gain: { bg: "#11734b", fg: "#f8fafc" },       // Gain
+      loss: { bg: "#b10202", fg: "#f8fafc" },       // Loss
+      break_even: { bg: "#ffe5a0", fg: "#0f172a" }, // Break even
+    };
+
+    function colorizeHTF(selectEl) {
+      const cfg = htfColors[selectEl.value];
+      if (cfg) {
+        selectEl.style.background = cfg.bg;
+        selectEl.style.color = cfg.fg;
+        selectEl.style.borderColor = "rgba(255,255,255,.35)";
+      } else {
+        selectEl.style.background = "";
+        selectEl.style.color = "";
+      }
+    }
+
+    function colorizeTrend(selectEl) {
+      const cfg = trendColors[selectEl.value];
+      if (cfg) {
+        selectEl.style.background = cfg.bg;
+        selectEl.style.color = cfg.fg;
+        selectEl.style.borderColor = "rgba(255,255,255,.35)";
+      } else {
+        selectEl.style.background = "";
+        selectEl.style.color = "";
+      }
+    }
+
+    function colorizeSMC(selectEl) {
+      const cfg = smcColors[selectEl.value];
+      if (cfg) {
+        selectEl.style.background = cfg.bg;
+        selectEl.style.color = cfg.fg;
+        selectEl.style.borderColor = "rgba(255,255,255,.35)";
+      } else {
+        selectEl.style.background = "";
+        selectEl.style.color = "";
+      }
+    }
+
+    function colorizePremium(selectEl) {
+      const cfg = premiumColors[selectEl.value];
+      if (cfg) {
+        selectEl.style.background = cfg.bg;
+        selectEl.style.color = cfg.fg;
+        selectEl.style.borderColor = "rgba(255,255,255,.35)";
+      } else {
+        selectEl.style.background = "";
+        selectEl.style.color = "";
+      }
+    }
+
+    function colorizeRegion(selectEl) {
+      const cfg = regionColors[selectEl.value];
+      if (cfg) {
+        selectEl.style.background = cfg.bg;
+        selectEl.style.color = cfg.fg;
+        selectEl.style.borderColor = "rgba(255,255,255,.35)";
+      } else {
+        selectEl.style.background = "";
+        selectEl.style.color = "";
+      }
+    }
+
+    function colorizeEntry(selectEl) {
+      const cfg = entryColors[selectEl.value];
+      if (cfg) {
+        selectEl.style.background = cfg.bg;
+        selectEl.style.color = cfg.fg;
+        selectEl.style.borderColor = "rgba(255,255,255,.35)";
+      } else {
+        selectEl.style.background = "";
+        selectEl.style.color = "";
+      }
+    }
+
+    function colorizeSetup(selectEl) {
+      const cfg = setupColors[selectEl.value];
+      if (cfg) {
+        selectEl.style.background = cfg.bg;
+        selectEl.style.color = cfg.fg;
+        selectEl.style.borderColor = "rgba(255,255,255,.35)";
+      } else {
+        selectEl.style.background = "";
+        selectEl.style.color = "";
+      }
+    }
+
+    function colorizeTrigger(selectEl) {
+      const cfg = triggerColors[selectEl.value];
+      if (cfg) {
+        selectEl.style.background = cfg.bg;
+        selectEl.style.color = cfg.fg;
+        selectEl.style.borderColor = "rgba(255,255,255,.35)";
+      } else {
+        selectEl.style.background = "";
+        selectEl.style.color = "";
+      }
+    }
+
+    function colorizePartial(selectEl) {
+      const cfg = partialColors[selectEl.value];
+      if (cfg) {
+        selectEl.style.background = cfg.bg;
+        selectEl.style.color = cfg.fg;
+        selectEl.style.borderColor = "rgba(255,255,255,.35)";
+      } else {
+        selectEl.style.background = "";
+        selectEl.style.color = "";
+      }
+    }
+
+    function colorizeResult(selectEl) {
+      const cfg = resultColors[selectEl.value];
+      if (cfg) {
+        selectEl.style.background = cfg.bg;
+        selectEl.style.color = cfg.fg;
+        selectEl.style.borderColor = "rgba(255,255,255,.35)";
+      } else {
+        selectEl.style.background = "";
+        selectEl.style.color = "";
+      }
+    }
+
+    document.querySelectorAll('select[name="high_time_frame"]').forEach((sel) => {
+      colorizeHTF(sel);
+      sel.addEventListener("change", () => colorizeHTF(sel));
+    });
+
+    document.querySelectorAll('select[name="trend"]').forEach((sel) => {
+      colorizeTrend(sel);
+      sel.addEventListener("change", () => colorizeTrend(sel));
+    });
+
+    document.querySelectorAll('select[name="smc_panel"]').forEach((sel) => {
+      colorizeSMC(sel);
+      sel.addEventListener("change", () => colorizeSMC(sel));
+    });
+
+    document.querySelectorAll('select[name="premium_discount"]').forEach((sel) => {
+      colorizePremium(sel);
+      sel.addEventListener("change", () => colorizePremium(sel));
+    });
+
+    document.querySelectorAll('select[name="region_htf"]').forEach((sel) => {
+      colorizeRegion(sel);
+      sel.addEventListener("change", () => colorizeRegion(sel));
+    });
+
+    document.querySelectorAll('select[name="entry_type"]').forEach((sel) => {
+      colorizeEntry(sel);
+      sel.addEventListener("change", () => colorizeEntry(sel));
+    });
+
+    document.querySelectorAll('select[name="setup"]').forEach((sel) => {
+      colorizeSetup(sel);
+      sel.addEventListener("change", () => colorizeSetup(sel));
+    });
+
+    document.querySelectorAll('select[name="trigger"]').forEach((sel) => {
+      colorizeTrigger(sel);
+      sel.addEventListener("change", () => colorizeTrigger(sel));
+    });
+
+    document.querySelectorAll('select[name="partial_trade"]').forEach((sel) => {
+      colorizePartial(sel);
+      sel.addEventListener("change", () => colorizePartial(sel));
+    });
+
+    document.querySelectorAll('select[name="result_type"]').forEach((sel) => {
+      colorizeResult(sel);
+      sel.addEventListener("change", () => colorizeResult(sel));
+    });
+  });
+</script>
+{% endblock %}

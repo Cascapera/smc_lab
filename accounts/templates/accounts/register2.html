@@ -1,0 +1,193 @@
+﻿{% load static %}
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Criar conta | Smart Money Concept LAB</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg-900:#070B12;
+      --bg-850:#0B1220;
+      --bg-800:#0E1726;
+      --line: rgba(255,255,255,.10);
+      --text: rgba(255,255,255,.92);
+      --muted: rgba(255,255,255,.72);
+      --cyan-500:#22D3EE;
+      --blue-500:#3B82F6;
+      --radius-lg: 16px;
+      --max: 1080px;
+    }
+    *{box-sizing:border-box;}
+    body{
+      margin:0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color:var(--text);
+      background:
+        linear-gradient(180deg, rgba(7,11,18,.72), rgba(7,11,18,.78)),
+        radial-gradient(1200px 900px at 20% 10%, rgba(34,211,238,.16), transparent 55%),
+        radial-gradient(1000px 800px at 80% 20%, rgba(59,130,246,.14), transparent 60%),
+        radial-gradient(900px 700px at 60% 80%, rgba(45,212,191,.10), transparent 60%),
+        url("{% static 'image/fundo_site.png' %}");
+      background-size: cover;
+      background-position: center;
+      background-attachment: fixed;
+      min-height: 100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding: 32px 20px;
+    }
+    .card{
+      width: min(var(--max), 100%);
+      background: rgba(255,255,255,.04);
+      border: 1px solid rgba(255,255,255,.10);
+      border-radius: 18px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.45);
+      overflow:hidden;
+    }
+    .card-head{
+      padding: 22px 26px;
+      border-bottom: 1px solid var(--line);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 10px;
+    }
+    .title{
+      margin:0;
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing:.04em;
+    }
+    .actions{
+      display:flex;
+      gap:10px;
+      align-items:center;
+    }
+    .btn{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,.16);
+      background: rgba(255,255,255,.06);
+      color: var(--text);
+      font-weight: 700;
+      letter-spacing:.05em;
+      text-decoration:none;
+      font-size: 12px;
+    }
+    .btn-primary{
+      border-color: rgba(34,211,238,.35);
+      background: linear-gradient(180deg, rgba(59,130,246,.95), rgba(34,211,238,.80));
+      color: #03111A;
+      box-shadow: 0 18px 40px rgba(34,211,238,.18);
+    }
+    .content{
+      padding: 26px;
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    .section-title{
+      margin: 0 0 10px;
+      font-size: 14px;
+      letter-spacing:.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    form{
+      margin:0;
+      display:grid;
+      gap: 20px;
+      align-content:start;
+    }
+    .field{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+    }
+    label{
+      font-weight: 600;
+      font-size: 13px;
+      letter-spacing:.02em;
+      color: var(--text);
+    }
+    input, select, textarea{
+      width:100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(0,0,0,.20);
+      color: var(--text);
+      font-size: 14px;
+    }
+    small{ color: var(--muted); }
+    .errors{ color:#f87171; font-size:13px; margin: 4px 0 0; }
+    .actions-bottom{
+      grid-column: 1 / -1;
+      display:flex;
+      align-items:center;
+      gap:12px;
+      flex-wrap:wrap;
+      margin-top: 8px;
+    }
+    .note{ color: var(--muted); font-size: 13px; }
+    @media (max-width: 900px){
+      .content{ grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="card-head">
+      <h1 class="title">Criar conta</h1>
+      <div class="actions">
+        <a class="btn" href="{% url 'landing' %}">Voltar</a>
+        <a class="btn" href="{% url 'accounts:login' %}">Entrar</a>
+      </div>
+    </div>
+    <div class="content">
+      <form method="post" novalidate>
+        {% csrf_token %}
+
+        <div>
+          <h2 class="section-title">Dados de acesso</h2>
+          {{ user_form.non_field_errors }}
+          {% for field in user_form %}
+            <div class="field">
+              <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+              {% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}
+              {% for error in field.errors %}<div class="errors">{{ error }}</div>{% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+
+        <div>
+          <h2 class="section-title">Perfil do trader</h2>
+          {{ profile_form.non_field_errors }}
+          {% for field in profile_form %}
+            <div class="field">
+              <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+              {% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}
+              {% for error in field.errors %}<div class="errors">{{ error }}</div>{% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+
+        <div class="actions-bottom">
+          <button class="btn btn-primary" type="submit">Cadastrar</button>
+          <span class="note">Já possui conta? <a href="{% url 'accounts:login' %}">Entrar</a></span>
+        </div>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

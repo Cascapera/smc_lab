@@ -1,0 +1,557 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard Avançado | Trader Portal{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:space-between;margin-bottom:0.5rem;">
+  <h1 style="margin:0;">Dashboard Avançado</h1>
+  <div style="font-size:13px;color:#cbd5e1;opacity:.9;">Versão exclusiva para usuários premium.</div>
+</div>
+
+<div style="margin-bottom:1.5rem; padding:14px 16px; border-radius:12px; border:1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.04); display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between;">
+  <div style="display:flex; gap:10px; align-items:center; color:#e2e8f0;">
+    <span style="font-size:18px;">🚀</span>
+    <div>
+      <div style="font-weight:800; letter-spacing:.04em;">Analytics Avançados por IA</div>
+      <div style="color:#cbd5e1; font-size:13px;">A inteligência artificial irá analisar suas operações por métricas quant avançadas para que você possa evoluir seus trades.</div>
+    </div>
+  </div>
+  <a href="{% url 'trades:dashboard' %}" class="btn" style="padding:10px 14px; font-size:12px;">Iniciar análise por IA</a>
+</div>
+
+{% with adv=advanced %}
+<div style="display:flex;flex-wrap:wrap;gap:1rem;margin-bottom:2rem;">
+    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:170px;">
+        <strong>Profit factor</strong>
+        <div>{{ adv.profit_factor }}</div>
+    </div>
+    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:170px;">
+        <strong>Payoff</strong>
+        <div>{{ adv.payoff }}</div>
+    </div>
+    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:170px;">
+        <strong>Max drawdown</strong>
+        <div>R$ {{ adv.max_drawdown }} ({{ adv.max_drawdown_pct }}%)</div>
+    </div>
+    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:170px;">
+        <strong>Maior sequência de ganhos</strong>
+        <div>{{ adv.longest_win_streak }}</div>
+    </div>
+    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:170px;">
+        <strong>Maior sequência de perdas</strong>
+        <div>{{ adv.longest_loss_streak }}</div>
+    </div>
+    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:170px;">
+        <strong>Média de ganhos</strong>
+        <div>R$ {{ adv.avg_gain }}</div>
+    </div>
+    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:170px;">
+        <strong>Média de perdas</strong>
+        <div>R$ {{ adv.avg_loss }}</div>
+    </div>
+    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:170px;">
+        <strong>Melhor trade</strong>
+        <div>R$ {{ adv.best_trade }}</div>
+    </div>
+    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:170px;">
+        <strong>Pior trade</strong>
+        <div>R$ {{ adv.worst_trade }}</div>
+    </div>
+    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:170px;">
+        <strong>Total trades</strong>
+        <div>{{ adv.total_trades }}</div>
+    </div>
+    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:170px;">
+        <strong>Win rate</strong>
+        <div>{{ adv.win_rate }}%</div>
+    </div>
+    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:170px;">
+        <strong>Resultado acumulado</strong>
+        <div>R$ {{ adv.total_profit }}</div>
+    </div>
+</div>
+{% endwith %}
+
+<section style="margin-bottom:2rem;">
+    <h2>Evolução e drawdown</h2>
+    {% if advanced_chart.labels %}
+        <canvas id="advanced-balance-chart" height="120"></canvas>
+    {% else %}
+        <p>Nenhum trade registrado ainda.</p>
+    {% endif %}
+</section>
+
+<section style="margin-bottom:2rem;">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
+    <div>
+      <h2 style="margin:0;">Últimos trades</h2>
+      <div style="color:#cbd5e1;font-size:13px;">Tabela detalhada com filtros adicionais.</div>
+    </div>
+    <a href="{% url 'trades:trade_add' %}" class="btn" style="padding:10px 14px;font-size:12px;">Registrar novo trade</a>
+  </div>
+
+  <form method="get" style="margin:1rem 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:0.75rem;align-items:end;">
+    <select name="market" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;min-width:140px;">
+      <option value="">Mercado</option>
+      {% for value,label in adv_trade_choices.markets %}
+        <option value="{{ value }}" {% if adv_trade_filters.market == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <select name="setup" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;min-width:140px;">
+      <option value="">Setup</option>
+      {% for value,label in adv_trade_choices.setups %}
+        <option value="{{ value }}" {% if adv_trade_filters.setup == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <select name="entry_type" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;min-width:140px;">
+      <option value="">Tipo de entrada</option>
+      {% for value,label in adv_trade_choices.entry_types %}
+        <option value="{{ value }}" {% if adv_trade_filters.entry_type == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <select name="result_type" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;min-width:140px;">
+      <option value="">Resultado</option>
+      {% for value,label in adv_trade_choices.result_types %}
+        <option value="{{ value }}" {% if adv_trade_filters.result_type == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <select name="direction" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;min-width:140px;">
+      <option value="">Direção</option>
+      {% for value,label in adv_trade_choices.directions %}
+        <option value="{{ value }}" {% if adv_trade_filters.direction == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <select name="high_time_frame" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;min-width:120px;">
+      <option value="">HTF</option>
+      {% for value,label in adv_trade_choices.high_time_frames %}
+        <option value="{{ value }}" {% if adv_trade_filters.high_time_frame == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <select name="region_htf" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;min-width:140px;">
+      <option value="">Região HTF</option>
+      {% for value,label in adv_trade_choices.region_htfs %}
+        <option value="{{ value }}" {% if adv_trade_filters.region_htf == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <select name="trend" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;min-width:140px;">
+      <option value="">Tendência</option>
+      {% for value,label in adv_trade_choices.trends %}
+        <option value="{{ value }}" {% if adv_trade_filters.trend == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <select name="smc_panel" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;min-width:140px;">
+      <option value="">Painel SMC</option>
+      {% for value,label in adv_trade_choices.smc_panels %}
+        <option value="{{ value }}" {% if adv_trade_filters.smc_panel == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <select name="trigger" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;min-width:150px;">
+      <option value="">Gatilho</option>
+      {% for value,label in adv_trade_choices.triggers %}
+        <option value="{{ value }}" {% if adv_trade_filters.trigger == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <select name="partial_trade" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;min-width:150px;">
+      <option value="">Parcial</option>
+      {% for value,label in adv_trade_choices.partial_trades %}
+        <option value="{{ value }}" {% if adv_trade_filters.partial_trade == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <input type="text" name="symbol" placeholder="Símbolo" value="{{ adv_trade_filters.symbol }}" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;min-width:120px;">
+    <div style="display:flex;gap:0.5rem;align-items:center;justify-content:flex-start;flex-wrap:wrap;grid-column:1 / -1;">
+      <button type="submit" class="btn btn-primary" style="min-width:100px;padding:10px 14px;line-height:1.1;">Filtrar</button>
+    </div>
+  </form>
+
+  {% if adv_trades_page %}
+  <div style="border:1px solid #334155; border-radius:12px; background:#0b1220; padding:1rem;">
+    <table style="width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px;">
+      <thead>
+        <tr>
+          <th style="text-align:left;padding:0.4rem;border-bottom:1px solid #334155;">Data</th>
+          <th style="text-align:left;padding:0.4rem;border-bottom:1px solid #334155;">Símbolo</th>
+          <th style="text-align:left;padding:0.4rem;border-bottom:1px solid #334155;">Mercado</th>
+          <th style="text-align:left;padding:0.4rem;border-bottom:1px solid #334155;">Direção</th>
+          <th style="text-align:left;padding:0.4rem;border-bottom:1px solid #334155;">Setup</th>
+          <th style="text-align:left;padding:0.4rem;border-bottom:1px solid #334155;">Entrada</th>
+          <th style="text-align:left;padding:0.4rem;border-bottom:1px solid #334155;">HTF</th>
+          <th style="text-align:left;padding:0.4rem;border-bottom:1px solid #334155;">Região HTF</th>
+          <th style="text-align:left;padding:0.4rem;border-bottom:1px solid #334155;">Tendência</th>
+          <th style="text-align:left;padding:0.4rem;border-bottom:1px solid #334155;">Painel SMC</th>
+          <th style="text-align:left;padding:0.4rem;border-bottom:1px solid #334155;">Gatilho</th>
+          <th style="text-align:left;padding:0.4rem;border-bottom:1px solid #334155;">Parcial</th>
+          <th style="text-align:right;padding:0.4rem;border-bottom:1px solid #334155;">Resultado</th>
+          <th style="text-align:center;padding:0.4rem;border-bottom:1px solid #334155;">Captura</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for trade in adv_trades_page %}
+        <tr>
+          <td style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.executed_at|date:"d/m/Y H:i" }}</td>
+          <td style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.symbol }}</td>
+          <td style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_market_display }}</td>
+          <td style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_direction_display }}</td>
+          <td data-colorize-cell="setup" data-value="{{ trade.setup }}" style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_setup_display }}</td>
+          <td data-colorize-cell="entry" data-value="{{ trade.entry_type }}" style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_entry_type_display }}</td>
+          <td data-colorize-cell="htf" data-value="{{ trade.high_time_frame }}" style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_high_time_frame_display }}</td>
+          <td data-colorize-cell="region" data-value="{{ trade.region_htf }}" style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_region_htf_display }}</td>
+          <td data-colorize-cell="trend" data-value="{{ trade.trend }}" style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_trend_display }}</td>
+          <td data-colorize-cell="smc" data-value="{{ trade.smc_panel }}" style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_smc_panel_display }}</td>
+          <td data-colorize-cell="trigger" data-value="{{ trade.trigger }}" style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_trigger_display }}</td>
+          <td data-colorize-cell="partial" data-value="{{ trade.partial_trade }}" style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_partial_trade_display }}</td>
+          <td data-colorize-cell="result" data-value="{{ trade.result_type }}" style="padding:0.4rem;text-align:right;border-bottom:1px solid #1e293b;">R$ {{ trade.profit_amount }}</td>
+          <td style="padding:0.4rem;text-align:center;border-bottom:1px solid #1e293b;">
+            {% if trade.screenshot %}
+              <a href="{{ trade.screenshot.url }}" target="_blank" title="Ver captura" style="color:#38bdf8;">📷</a>
+            {% else %}
+              —
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div style="margin-top:1rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
+    <div>Mostrando {{ adv_trades_page.start_index }}–{{ adv_trades_page.end_index }} de {{ adv_trades_page.paginator.count }} trades</div>
+    {% if adv_trades_page.has_other_pages %}
+    <nav style="display:flex;gap:0.5rem;align-items:center;">
+      {% if adv_trades_page.has_previous %}
+        <a href="?trade_page={{ adv_trades_page.previous_page_number }}{% if adv_filters_query %}&{{ adv_filters_query }}{% endif %}" style="color:#38bdf8;">Anterior</a>
+      {% endif %}
+      {% for num in adv_trades_page.paginator.page_range %}
+        {% if num == adv_trades_page.number %}
+          <span style="font-weight:bold;">{{ num }}</span>
+        {% else %}
+          <a href="?trade_page={{ num }}{% if adv_filters_query %}&{{ adv_filters_query }}{% endif %}" style="color:#38bdf8;">{{ num }}</a>
+        {% endif %}
+      {% endfor %}
+      {% if adv_trades_page.has_next %}
+        <a href="?trade_page={{ adv_trades_page.next_page_number }}{% if adv_filters_query %}&{{ adv_filters_query }}{% endif %}" style="color:#38bdf8;">Próxima</a>
+      {% endif %}
+    </nav>
+    {% endif %}
+  </div>
+  {% else %}
+    <p>Nenhum trade encontrado com os filtros aplicados.</p>
+  {% endif %}
+</section>
+
+<section style="margin-bottom:2rem;">
+    <h2>Por mercado</h2>
+    {% include "trades/partials/_table_breakdown.html" with rows=by_market %}
+</section>
+
+<section style="margin-bottom:2rem;">
+    <h2>Por setup</h2>
+    {% include "trades/partials/_table_breakdown.html" with rows=by_setup %}
+</section>
+
+<section style="margin-bottom:2rem;">
+    <h2>Por tipo de entrada</h2>
+    {% include "trades/partials/_table_breakdown.html" with rows=by_entry_type %}
+</section>
+
+{% if advanced_chart.labels %}
+  {{ advanced_chart|json_script:"advanced-chart-data" }}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function(){
+      const payloadEl = document.getElementById("advanced-chart-data");
+      if(!payloadEl) return;
+      const data = JSON.parse(payloadEl.textContent);
+      if(!data.labels.length) return;
+
+      const ctx = document.getElementById("advanced-balance-chart");
+      new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: data.labels,
+          datasets: [
+            {
+              label: "Saldo",
+              data: data.balance,
+              borderColor: "#38bdf8",
+              backgroundColor: "rgba(56,189,248,0.15)",
+              tension: 0.3,
+              fill: true,
+              yAxisID: "y",
+            },
+            {
+              label: "Drawdown",
+              data: data.drawdown,
+              borderColor: "#ef4444",
+              backgroundColor: "rgba(239,68,68,0.18)",
+              tension: 0.3,
+              fill: true,
+              yAxisID: "y",
+            },
+          ],
+        },
+        options: {
+          scales: {
+            y: {
+              ticks: { color: "#cbd5f5" },
+              grid: { color: "#1e293b" },
+            },
+            x: {
+              ticks: { color: "#cbd5f5" },
+              grid: { display:false },
+            },
+          },
+          plugins: {
+            legend: { position: "bottom", labels: { color: "#cbd5f5" } },
+          },
+        }
+      });
+    });
+  </script>
+{% endif %}
+
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const htfColors = {
+      "5": { bg: "#ffe5a0", fg: "#0f172a" },
+      "15": { bg: "#d4edbc", fg: "#0f172a" },
+      "60": { bg: "#11734b", fg: "#f8fafc" },
+      "240": { bg: "#11734b", fg: "#f8fafc" },
+    };
+    const trendColors = {
+      bullish: { bg: "#11734b", fg: "#f8fafc" }, // A favor
+      range: { bg: "#ffe5a0", fg: "#0f172a" },   // Lateral
+      bearish: { bg: "#b10202", fg: "#f8fafc" }, // Contra
+    };
+    const smcColors = {
+      optimistic: { bg: "#11734b", fg: "#f8fafc" }, // A favor
+      neutral: { bg: "#ffe5a0", fg: "#0f172a" },    // Neutro
+      pessimistic: { bg: "#b10202", fg: "#f8fafc" } // Contra
+    };
+    const regionColors = {
+      primary: { bg: "#11734b", fg: "#f8fafc" },   // Primária
+      secondary: { bg: "#ffe5a0", fg: "#0f172a" }, // Secundária
+      none: { bg: "#b10202", fg: "#f8fafc" },      // N/D
+    };
+    const entryColors = {
+      anticipated: { bg: "#b10202", fg: "#f8fafc" }, // Ant.
+      confirmed: { bg: "#11734b", fg: "#f8fafc" },   // Conf.
+      lateral: { bg: "#ffe5a0", fg: "#0f172a" },     // Lat.
+    };
+    const setupColors = {
+      flip: { bg: "#ffcfc9", fg: "#0f172a" },
+      choch: { bg: "#ffe5a0", fg: "#0f172a" },
+      continuation: { bg: "#11734b", fg: "#f8fafc" },
+      liquidity: { bg: "#11734b", fg: "#f8fafc" },
+      pd: { bg: "#e6cff2", fg: "#0f172a" },
+      fvg: { bg: "#ffc8aa", fg: "#0f172a" },
+      top_failure: { bg: "#e6cff2", fg: "#0f172a" },   // Falha de topo
+      bottom_failure: { bg: "#e6cff2", fg: "#0f172a" },// Falha de fundo
+      double_top: { bg: "#e6cff2", fg: "#0f172a" },
+      double_bottom: { bg: "#e6cff2", fg: "#0f172a" },
+      none: { bg: "#b10202", fg: "#f8fafc" },          // N/D
+      wedge: { bg: "#ffcfc9", fg: "#0f172a" },         // Cunha
+    };
+    const triggerColors = {
+      region: { bg: "#d4edbc", fg: "#0f172a" },         // Região
+      passagem: { bg: "#11734b", fg: "#f8fafc" },       // Passagem
+      martelo_bf: { bg: "#ffc8aa", fg: "#0f172a" },     // Mart + BF
+      fffd: { bg: "#bfe1f6", fg: "#0f172a" },           // FFFD
+      padrao: { bg: "#e6cff2", fg: "#0f172a" },         // Padrão
+      none: { bg: "#b10202", fg: "#f8fafc" },           // N/A
+      rocadinha: { bg: "#ffcfc9", fg: "#0f172a" },      // Roçadinha
+      barra_ignorada: { bg: "#ffe5a0", fg: "#0f172a" }, // Barra Ignorada
+      gift: { bg: "#ffc8aa", fg: "#0f172a" },           // Gift
+    };
+    const partialColors = {
+      yes_pos: { bg: "#11734b", fg: "#f8fafc" },      // SIM + 5x1
+      yes_neg: { bg: "#d4edbc", fg: "#0f172a" },      // SIM - 5x1
+      no_done: { bg: "#11734b", fg: "#f8fafc" },      // NÃO
+      not_available: { bg: "#ffe5a0", fg: "#0f172a" } // Sem parcial
+    };
+    const resultColors = {
+      gain: { bg: "#11734b", fg: "#f8fafc" },       // Gain
+      loss: { bg: "#b10202", fg: "#f8fafc" },       // Loss
+      break_even: { bg: "#ffe5a0", fg: "#0f172a" }, // Break even
+    };
+
+    function colorizeHTF(selectEl) {
+      const cfg = htfColors[selectEl.value];
+      if (cfg) {
+        selectEl.style.background = cfg.bg;
+        selectEl.style.color = cfg.fg;
+        selectEl.style.borderColor = "rgba(255,255,255,.35)";
+      } else {
+        selectEl.style.background = "#0f172a";
+        selectEl.style.color = "#e2e8f0";
+        selectEl.style.borderColor = "#334155";
+      }
+    }
+
+    function colorizeSMC(selectEl) {
+      const cfg = smcColors[selectEl.value];
+      if (cfg) {
+        selectEl.style.background = cfg.bg;
+        selectEl.style.color = cfg.fg;
+        selectEl.style.borderColor = "rgba(255,255,255,.35)";
+      } else {
+        selectEl.style.background = "#0f172a";
+        selectEl.style.color = "#e2e8f0";
+        selectEl.style.borderColor = "#334155";
+      }
+    }
+
+    function colorizeRegion(selectEl) {
+      const cfg = regionColors[selectEl.value];
+      if (cfg) {
+        selectEl.style.background = cfg.bg;
+        selectEl.style.color = cfg.fg;
+        selectEl.style.borderColor = "rgba(255,255,255,.35)";
+      } else {
+        selectEl.style.background = "#0f172a";
+        selectEl.style.color = "#e2e8f0";
+        selectEl.style.borderColor = "#334155";
+      }
+    }
+
+    function colorizeEntry(selectEl) {
+      const cfg = entryColors[selectEl.value];
+      if (cfg) {
+        selectEl.style.background = cfg.bg;
+        selectEl.style.color = cfg.fg;
+        selectEl.style.borderColor = "rgba(255,255,255,.35)";
+      } else {
+        selectEl.style.background = "#0f172a";
+        selectEl.style.color = "#e2e8f0";
+        selectEl.style.borderColor = "#334155";
+      }
+    }
+
+    function colorizeTrend(selectEl) {
+      const cfg = trendColors[selectEl.value];
+      if (cfg) {
+        selectEl.style.background = cfg.bg;
+        selectEl.style.color = cfg.fg;
+        selectEl.style.borderColor = "rgba(255,255,255,.35)";
+      } else {
+        selectEl.style.background = "#0f172a";
+        selectEl.style.color = "#e2e8f0";
+        selectEl.style.borderColor = "#334155";
+      }
+    }
+
+    function colorizeSetup(selectEl) {
+      const cfg = setupColors[selectEl.value];
+      if (cfg) {
+        selectEl.style.background = cfg.bg;
+        selectEl.style.color = cfg.fg;
+        selectEl.style.borderColor = "rgba(255,255,255,.35)";
+      } else {
+        selectEl.style.background = "#0f172a";
+        selectEl.style.color = "#e2e8f0";
+        selectEl.style.borderColor = "#334155";
+      }
+    }
+
+    function colorizeTrigger(selectEl) {
+      const cfg = triggerColors[selectEl.value];
+      if (cfg) {
+        selectEl.style.background = cfg.bg;
+        selectEl.style.color = cfg.fg;
+        selectEl.style.borderColor = "rgba(255,255,255,.35)";
+      } else {
+        selectEl.style.background = "#0f172a";
+        selectEl.style.color = "#e2e8f0";
+        selectEl.style.borderColor = "#334155";
+      }
+    }
+
+    function colorizePartial(selectEl) {
+      const cfg = partialColors[selectEl.value];
+      if (cfg) {
+        selectEl.style.background = cfg.bg;
+        selectEl.style.color = cfg.fg;
+        selectEl.style.borderColor = "rgba(255,255,255,.35)";
+      } else {
+        selectEl.style.background = "#0f172a";
+        selectEl.style.color = "#e2e8f0";
+        selectEl.style.borderColor = "#334155";
+      }
+    }
+
+    function colorizeResult(selectEl) {
+      const cfg = resultColors[selectEl.value];
+      if (cfg) {
+        selectEl.style.background = cfg.bg;
+        selectEl.style.color = cfg.fg;
+        selectEl.style.borderColor = "rgba(255,255,255,.35)";
+      } else {
+        selectEl.style.background = "#0f172a";
+        selectEl.style.color = "#e2e8f0";
+        selectEl.style.borderColor = "#334155";
+      }
+    }
+
+    document.querySelectorAll('select[name="high_time_frame"]').forEach((sel) => {
+      colorizeHTF(sel);
+      sel.addEventListener("change", () => colorizeHTF(sel));
+    });
+
+    document.querySelectorAll('select[name="smc_panel"]').forEach((sel) => {
+      colorizeSMC(sel);
+      sel.addEventListener("change", () => colorizeSMC(sel));
+    });
+
+    document.querySelectorAll('select[name="region_htf"]').forEach((sel) => {
+      colorizeRegion(sel);
+      sel.addEventListener("change", () => colorizeRegion(sel));
+    });
+
+    document.querySelectorAll('select[name="entry_type"]').forEach((sel) => {
+      colorizeEntry(sel);
+      sel.addEventListener("change", () => colorizeEntry(sel));
+    });
+
+    document.querySelectorAll('select[name="setup"]').forEach((sel) => {
+      colorizeSetup(sel);
+      sel.addEventListener("change", () => colorizeSetup(sel));
+    });
+
+    document.querySelectorAll('select[name="trigger"]').forEach((sel) => {
+      colorizeTrigger(sel);
+      sel.addEventListener("change", () => colorizeTrigger(sel));
+    });
+
+    document.querySelectorAll('select[name="partial_trade"]').forEach((sel) => {
+      colorizePartial(sel);
+      sel.addEventListener("change", () => colorizePartial(sel));
+    });
+
+    document.querySelectorAll('select[name="result_type"]').forEach((sel) => {
+      colorizeResult(sel);
+      sel.addEventListener("change", () => colorizeResult(sel));
+    });
+
+    document.querySelectorAll('select[name="trend"]').forEach((sel) => {
+      colorizeTrend(sel);
+      sel.addEventListener("change", () => colorizeTrend(sel));
+    });
+
+    // Coloração das células da tabela de trades
+    function colorizeCell(el, map) {
+      const cfg = map[el.dataset.value];
+      if (cfg) {
+        el.style.background = cfg.bg;
+        el.style.color = cfg.fg;
+      }
+    }
+    document.querySelectorAll('[data-colorize-cell="htf"]').forEach((cell) => colorizeCell(cell, htfColors));
+    document.querySelectorAll('[data-colorize-cell="region"]').forEach((cell) => colorizeCell(cell, regionColors));
+    document.querySelectorAll('[data-colorize-cell="trend"]').forEach((cell) => colorizeCell(cell, trendColors));
+    document.querySelectorAll('[data-colorize-cell="smc"]').forEach((cell) => colorizeCell(cell, smcColors));
+    document.querySelectorAll('[data-colorize-cell="entry"]').forEach((cell) => colorizeCell(cell, entryColors));
+    document.querySelectorAll('[data-colorize-cell="setup"]').forEach((cell) => colorizeCell(cell, setupColors));
+    document.querySelectorAll('[data-colorize-cell="trigger"]').forEach((cell) => colorizeCell(cell, triggerColors));
+    document.querySelectorAll('[data-colorize-cell="partial"]').forEach((cell) => colorizeCell(cell, partialColors));
+    document.querySelectorAll('[data-colorize-cell="result"]').forEach((cell) => colorizeCell(cell, resultColors));
+  });
+</script>
+{% endblock %}

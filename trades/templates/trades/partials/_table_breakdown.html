@@ -1,0 +1,32 @@
+﻿<div style="overflow-x:auto;">
+    <table style="width:100%;border-collapse:collapse;">
+        <thead>
+            <tr>
+                <th style="text-align:left;padding:0.5rem;border-bottom:1px solid #334155;">Categoria</th>
+                <th style="text-align:right;padding:0.5rem;border-bottom:1px solid #334155;">Trades</th>
+                <th style="text-align:right;padding:0.5rem;border-bottom:1px solid #334155;">Vitórias</th>
+                <th style="text-align:right;padding:0.5rem;border-bottom:1px solid #334155;">Derrotas</th>
+                <th style="text-align:right;padding:0.5rem;border-bottom:1px solid #334155;">Break-even</th>
+                <th style="text-align:right;padding:0.5rem;border-bottom:1px solid #334155;">Win %</th>
+                <th style="text-align:right;padding:0.5rem;border-bottom:1px solid #334155;">Média lucro</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                <td style="padding:0.75rem;border-bottom:1px solid #1e293b;">{{ row.label }}</td>
+                <td style="padding:0.75rem;text-align:right;border-bottom:1px solid #1e293b;">{{ row.count }}</td>
+                <td style="padding:0.75rem;text-align:right;border-bottom:1px solid #1e293b;">{{ row.wins }}</td>
+                <td style="padding:0.75rem;text-align:right;border-bottom:1px solid #1e293b;">{{ row.losses }}</td>
+                <td style="padding:0.75rem;text-align:right;border-bottom:1px solid #1e293b;">{{ row.breakevens }}</td>
+                <td style="padding:0.75rem;text-align:right;border-bottom:1px solid #1e293b;">{{ row.win_rate }}%</td>
+                <td style="padding:0.75rem;text-align:right;border-bottom:1px solid #1e293b;">R$ {{ row.avg_profit }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="7" style="padding:1rem;text-align:center;">Sem dados disponíveis.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

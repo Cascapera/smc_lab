@@ -1,0 +1,215 @@
+﻿{% load static %}
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Trader Portal{% endblock %}</title>
+    <style>
+        :root{
+            --bg-900:#070B12;
+            --line: rgba(255,255,255,.10);
+        }
+        body {
+            font-family: Arial, sans-serif;
+            color: #e2e8f0;
+            margin: 0;
+            background:
+              linear-gradient(180deg, rgba(7,11,18,.72), rgba(7,11,18,.78)),
+              url("{% static 'image/fundo_site.png' %}");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }
+        header {
+            background: rgba(30,41,59,.90);
+            padding: 1rem;
+            border-bottom: 1px solid var(--line);
+        }
+        header a {
+            color: #fbbf24;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        main {
+            max-width: 960px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+            background: rgba(15,23,42,.78);
+            border: 1px solid rgba(255,255,255,.06);
+            border-radius: 12px;
+            box-shadow: 0 20px 50px rgba(0,0,0,.35);
+        }
+        footer {
+            padding: 2rem 0;
+            color: #94a3b8;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 1.25rem;
+        }
+        .footer-inner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            flex-wrap: wrap;
+            font-size: 0.95rem;
+            text-align: left;
+        }
+        .messages {
+            list-style: none;
+            padding: 0;
+            margin: 1rem 0;
+        }
+        .messages li {
+            margin-bottom: 0.5rem;
+            padding: 0.75rem 1rem;
+            background: #1e293b;
+            border-left: 4px solid #38bdf8;
+        }
+        form {
+            background: #1e293b;
+            padding: 1.5rem;
+            border-radius: 8px;
+        }
+        form h2 {
+            margin-top: 1.5rem;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 0.5rem;
+        }
+        label {
+            display: block;
+            margin: 0.75rem 0 0.25rem;
+        }
+        input, select {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #475569;
+            border-radius: 4px;
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+        button {
+            margin-top: 1rem;
+            padding: 0.75rem 1.5rem;
+            background: #38bdf8;
+            color: #0f172a;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        a {
+            color: #38bdf8;
+        }
+        /* Topbar (menu) */
+        .topbar{
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            backdrop-filter: blur(10px);
+            background: rgba(7,11,18,.60);
+            border-bottom: 1px solid var(--line);
+        }
+        .topbar-inner{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 0;
+            gap: 18px;
+        }
+        .brand{
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 200px;
+            color: inherit;
+            text-decoration: none;
+        }
+        .logo-mark{
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            width:auto;
+            height:auto;
+            padding:0;
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            border-radius: 0;
+        }
+        nav{
+            display: flex;
+            align-items: center;
+            gap: 18px;
+        }
+        .navlink{
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing:.08em;
+            text-transform: uppercase;
+            color: rgba(255,255,255,.78);
+            padding: 10px 10px;
+            border-radius: 10px;
+            position:relative;
+        }
+        .navlink:hover{ color: rgba(255,255,255,.95); background: rgba(255,255,255,.05); }
+        .btn{
+            display:inline-flex; align-items:center; justify-content:center;
+            gap:10px;
+            padding: 11px 16px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,.16);
+            background: rgba(255,255,255,.06);
+            color: rgba(255,255,255,.92);
+            font-weight:700;
+            letter-spacing:.06em;
+            text-transform: uppercase;
+            font-size: 12px;
+            transition: transform .15s ease, background .15s ease, border-color .15s ease;
+            text-decoration: none;
+        }
+        .btn:hover{
+            transform: translateY(-1px);
+            background: rgba(255,255,255,.10);
+            border-color: rgba(255,255,255,.22);
+        }
+        .btn-primary{
+            border-color: rgba(34,211,238,.35);
+            background: linear-gradient(180deg, rgba(59,130,246,.95), rgba(34,211,238,.80));
+            box-shadow: 0 18px 55px rgba(59,130,246,.22);
+            color: #03111A;
+        }
+        .btn-primary:hover{
+            transform: translateY(-2px);
+            box-shadow: 0 22px 70px rgba(34,211,238,.20);
+        }
+        @media (max-width: 980px){
+            .brand{ min-width: auto; }
+        }
+        @media (max-width: 860px){
+            nav{ display:none; }
+        }
+    </style>
+</head>
+<body>
+    {% include "partials/_menu.html" %}
+    <main>
+        {% if messages %}
+            <ul class="messages">
+                {% for message in messages %}
+                    <li>{{ message }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+        {% block content %}{% endblock %}
+    </main>
+    {% include "partials/_footer.html" %}
+    <script>
+        const yearEl = document.getElementById("year");
+        if (yearEl) yearEl.textContent = new Date().getFullYear();
+    </script>
+</body>
+</html>

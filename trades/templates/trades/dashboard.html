@@ -1,0 +1,268 @@
+﻿{% extends "base.html" %}
+
+{% block title %}Dashboard | Trader Portal{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:0.5rem;">
+  <h1 style="margin:0;">Dashboard</h1>
+</div>
+
+<div style="margin-bottom:1.5rem; padding:14px 16px; border-radius:12px; border:1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.04); display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between;">
+  <div style="display:flex; gap:10px; align-items:center; color:#e2e8f0;">
+    <span style="font-size:18px;">⚡</span>
+    <div>
+      <div style="font-weight:800; letter-spacing:.04em;">Conheça o Dashboard Avançado</div>
+      <div style="color:#cbd5e1; font-size:13px;">Mais gráficos, filtros extras e analytics premium.</div>
+    </div>
+  </div>
+  <a href="{% url 'trades:dashboard_advanced' %}" class="btn btn-primary" style="padding:10px 14px; font-size:12px;">Ver detalhes</a>
+</div>
+
+{% with summary=dashboard.summary %}
+<div style="display:flex;flex-wrap:wrap;gap:1rem;margin-bottom:2rem;">
+    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:180px;">
+        <strong>Total trades</strong>
+        <div>{{ summary.total_trades }}</div>
+    </div>
+    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:180px;">
+        <strong>Win rate</strong>
+        <div>{{ summary.win_rate }}%</div>
+    </div>
+    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:180px;">
+        <strong>Resultado acumulado</strong>
+        <div>R$ {{ summary.total_profit }}</div>
+    </div>
+    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:180px;">
+        <strong>Saldo atual</strong>
+        <div>R$ {{ summary.current_balance }}</div>
+        <small>Inicial: R$ {{ summary.initial_balance }}</small>
+    </div>
+    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:180px;">
+        <strong>Melhor trade</strong>
+        <div>R$ {{ summary.best_trade }}</div>
+    </div>
+    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:180px;">
+        <strong>Pior trade</strong>
+        <div>R$ {{ summary.worst_trade }}</div>
+    </div>
+    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:180px;">
+        <strong>Média de ganhos</strong>
+        <div>R$ {{ summary.avg_gain }}</div>
+    </div>
+    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:180px;">
+        <strong>Média de perdas</strong>
+        <div>R$ {{ summary.avg_loss }}</div>
+    </div>
+</div>
+{% endwith %}
+
+<section style="margin-bottom:2rem;">
+    <h2>Evolução do saldo</h2>
+    {% if dashboard.balance_series %}
+        <canvas id="balance-chart" height="120"></canvas>
+    {% else %}
+        <p>Nenhum trade registrado ainda.</p>
+    {% endif %}
+</section>
+
+<section style="margin-bottom:2rem;">
+    <h2>Trades do usuário</h2>
+
+<form method="get" style="margin-bottom:1rem; display:grid; gap:0.5rem; grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); align-items:end;">
+        <label style="display:flex; flex-direction:column; gap:4px;">
+            <span style="font-size:12px; color:#cbd5e1;">Mercado</span>
+            <select name="market" style="padding:8px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#e2e8f0;">
+                <option value="">Todos</option>
+                {% for value,label in trade_choices.markets %}
+                    <option value="{{ value }}" {% if trade_filters.market == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label style="display:flex; flex-direction:column; gap:4px;">
+            <span style="font-size:12px; color:#cbd5e1;">Setup</span>
+            <select name="setup" style="padding:8px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#e2e8f0;">
+                <option value="">Todos</option>
+                {% for value,label in trade_choices.setups %}
+                    <option value="{{ value }}" {% if trade_filters.setup == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label style="display:flex; flex-direction:column; gap:4px;">
+            <span style="font-size:12px; color:#cbd5e1;">Tipo de entrada</span>
+            <select name="entry_type" style="padding:8px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#e2e8f0;">
+                <option value="">Todos</option>
+                {% for value,label in trade_choices.entry_types %}
+                    <option value="{{ value }}" {% if trade_filters.entry_type == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label style="display:flex; flex-direction:column; gap:4px;">
+            <span style="font-size:12px; color:#cbd5e1;">Resultado</span>
+            <select name="result_type" style="padding:8px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#e2e8f0;">
+                <option value="">Todos</option>
+                {% for value,label in trade_choices.result_types %}
+                    <option value="{{ value }}" {% if trade_filters.result_type == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label style="display:flex; flex-direction:column; gap:4px;">
+            <span style="font-size:12px; color:#cbd5e1;">Símbolo</span>
+            <input type="text" name="symbol" value="{{ trade_filters.symbol }}" placeholder="ex: PETR4" style="padding:8px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#e2e8f0;">
+        </label>
+    <div style="display:flex; gap:6px; justify-content:flex-end; flex-wrap:nowrap; grid-column: 1 / -1;">
+        <button type="submit" class="btn btn-primary" style="min-width:50px; text-align:center; padding:10px 14px; line-height:0.8;">Filtrar</button>
+        <a href="{% url 'trades:dashboard' %}" class="btn" style="min-width:50px; text-align:center; padding:10px 14px; line-height:0.8;">Limpar</a>
+    </div>
+    </form>
+
+    {% if trades_page and trades_page.object_list %}
+    <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;min-width:720px;">
+        <thead>
+          <tr>
+            <th style="text-align:left;padding:0.5rem;border-bottom:1px solid #334155;">Data</th>
+            <th style="text-align:left;padding:0.5rem;border-bottom:1px solid #334155;">Símbolo</th>
+            <th style="text-align:left;padding:0.5rem;border-bottom:1px solid #334155;">Mercado</th>
+            <th style="text-align:left;padding:0.5rem;border-bottom:1px solid #334155;">Direção</th>
+            <th style="text-align:left;padding:0.5rem;border-bottom:1px solid #334155;">Setup</th>
+            <th style="text-align:left;padding:0.5rem;border-bottom:1px solid #334155;">Entrada</th>
+            <th style="text-align:right;padding:0.5rem;border-bottom:1px solid #334155;">P/L</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for trade in trades_page %}
+          <tr>
+            <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ trade.executed_at|date:"d/m/Y H:i" }}</td>
+            <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ trade.symbol }}</td>
+            <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ trade.get_market_display }}</td>
+            <td style="padding:0.5rem;border-bottom:1e293b;">{{ trade.get_direction_display }}</td>
+            <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ trade.get_setup_display }}</td>
+            <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ trade.get_entry_type_display }}</td>
+            <td style="padding:0.5rem;text-align:right;border-bottom:1px solid #1e293b;">R$ {{ trade.profit_amount }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:1rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
+      <div>Mostrando {{ trades_page.start_index }}–{{ trades_page.end_index }} de {{ trades_page.paginator.count }} trades</div>
+      {% if trades_page.has_other_pages %}
+      <nav style="display:flex;gap:0.5rem;align-items:center;">
+        {% if trades_page.has_previous %}
+          <a href="?trade_page={{ trades_page.previous_page_number }}{% if request.GET.market %}&market={{ request.GET.market }}{% endif %}{% if request.GET.setup %}&setup={{ request.GET.setup }}{% endif %}{% if request.GET.entry_type %}&entry_type={{ request.GET.entry_type }}{% endif %}{% if request.GET.result_type %}&result_type={{ request.GET.result_type }}{% endif %}{% if request.GET.symbol %}&symbol={{ request.GET.symbol }}{% endif %}" style="color:#38bdf8;">Anterior</a>
+        {% endif %}
+        {% for num in trades_page.paginator.page_range %}
+          {% if num == trades_page.number %}
+            <span style="font-weight:bold;">{{ num }}</span>
+          {% else %}
+            <a href="?trade_page={{ num }}{% if request.GET.market %}&market={{ request.GET.market }}{% endif %}{% if request.GET.setup %}&setup={{ request.GET.setup }}{% endif %}{% if request.GET.entry_type %}&entry_type={{ request.GET.entry_type }}{% endif %}{% if request.GET.result_type %}&result_type={{ request.GET.result_type }}{% endif %}{% if request.GET.symbol %}&symbol={{ request.GET.symbol }}{% endif %}" style="color:#38bdf8;">{{ num }}</a>
+          {% endif %}
+        {% endfor %}
+        {% if trades_page.has_next %}
+          <a href="?trade_page={{ trades_page.next_page_number }}{% if request.GET.market %}&market={{ request.GET.market }}{% endif %}{% if request.GET.setup %}&setup={{ request.GET.setup }}{% endif %}{% if request.GET.entry_type %}&entry_type={{ request.GET.entry_type }}{% endif %}{% if request.GET.result_type %}&result_type={{ request.GET.result_type }}{% endif %}{% if request.GET.symbol %}&symbol={{ request.GET.symbol }}{% endif %}" style="color:#38bdf8;">Próxima</a>
+        {% endif %}
+      </nav>
+      {% endif %}
+    </div>
+    {% else %}
+      <p>Nenhum trade encontrado com os filtros aplicados.</p>
+    {% endif %}
+</section>
+
+<section style="margin-bottom:2rem;">
+    <h2>Por mercado</h2>
+    {% include "trades/partials/_table_breakdown.html" with rows=dashboard.by_market %}
+</section>
+
+<section style="margin-bottom:2rem;">
+    <h2>Distribuição de resultados</h2>
+    {% if dashboard.result_distribution %}
+        <div style="max-width:320px;margin:1rem auto 0;">
+            <canvas id="result-chart" height="120"></canvas>
+        </div>
+    {% else %}
+        <p>Nenhum trade registrado ainda.</p>
+    {% endif %}
+</section>
+
+<p><a href="{% url 'trades:trade_add' %}">Registrar novo trade</a></p>
+
+{% if dashboard.balance_series or dashboard.result_distribution %}
+    {{ balance_chart|json_script:"balance-chart-data" }}
+    {{ result_chart|json_script:"result-chart-data" }}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            const balanceDataEl = document.getElementById("balance-chart-data");
+            const resultDataEl = document.getElementById("result-chart-data");
+
+            if (balanceDataEl) {
+                const balancePayload = JSON.parse(balanceDataEl.textContent);
+                if (balancePayload.labels.length) {
+                    const ctx = document.getElementById("balance-chart");
+                    new Chart(ctx, {
+                        type: "line",
+                        data: {
+                            labels: balancePayload.labels,
+                            datasets: [
+                                {
+                                    label: "Saldo acumulado",
+                                    data: balancePayload.dataset,
+                                    borderColor: "#38bdf8",
+                                    backgroundColor: "rgba(56,189,248,0.15)",
+                                    tension: 0.3,
+                                    fill: true,
+                                },
+                            ],
+                        },
+                        options: {
+                            scales: {
+                                y: {
+                                    ticks: { color: "#cbd5f5" },
+                                    grid: { color: "#1e293b" },
+                                },
+                                x: {
+                                    ticks: { color: "#cbd5f5" },
+                                    grid: { display: false },
+                                },
+                            },
+                            plugins: {
+                                legend: { display: false },
+                            },
+                        },
+                    });
+                }
+            }
+
+            if (resultDataEl) {
+                const resultPayload = JSON.parse(resultDataEl.textContent);
+                if (resultPayload.labels.length) {
+                    const ctx = document.getElementById("result-chart");
+                    new Chart(ctx, {
+                        type: "doughnut",
+                        data: {
+                            labels: resultPayload.labels,
+                            datasets: [
+                                {
+                                    data: resultPayload.dataset,
+                                    backgroundColor: ["#22c55e", "#ef4444", "#f59e0b"],
+                                },
+                            ],
+                        },
+                        options: {
+                            radius: "80%",
+                            cutout: "10%",
+                            plugins: {
+                                legend: {
+                                    position: "bottom",
+                                    labels: { color: "#cbd5f5" },
+                                },
+                            },
+                        },
+                    });
+                }
+            }
+        });
+    </script>
+{% endif %}
+{% endblock %}

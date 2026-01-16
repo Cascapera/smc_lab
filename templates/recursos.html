@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Recursos | Trader Portal{% endblock %}
+{% block content %}
+<section class="container recursos-hero">
+  <p class="eyebrow">Recursos</p>
+  <h1 class="recursos-title">Ferramentas para traders de Smart Money</h1>
+  <p class="recursos-lede">
+  Tudo o que você precisa em um só lugar: registre, audite e acompanhe seus trades com precisão, explore dashboards inteligentes, identifique tendências e o fluxo do mercado com o Painel Macro, e utilize analytics com IA para evoluir com clareza e consistência.
+  </p>
+  <div class="cta-row" style="margin-top:18px;">
+    <a class="btn btn-primary" href="{% url 'accounts:login' %}">Entrar</a>
+    <a class="btn" href="{% url 'accounts:register' %}">Cadastrar</a>
+  </div>
+</section>
+
+<section class="container recursos-grid">
+  <article class="recurso-card">
+    <p class="tag">Histórico de trades</p>
+    <p>Registre execuções com setups, contexto, métricas e anexe evidências para auditoria completa.</p>
+  </article>
+
+  <article class="recurso-card">
+    <p class="tag">Dashboard avançado</p>
+    <p>Visualize P/L, evolução do saldo, distribuição de resultados e filtros detalhados por trade.</p>
+  </article>
+
+  <article class="recurso-card">
+    <p class="tag">IA & Analytics</p>
+    <p>Analytics com IA para detectar padrões, setups mais lucrativos e riscos que merecem atenção.</p>
+  </article>
+
+  <article class="recurso-card">
+    <p class="tag">Painel Macro</p>
+    <p>Painel com humor do mercado por ativos selecionados, leitura macro tendencia do fluxo.</p>
+  </article>
+
+  <article class="recurso-card">
+    <p class="tag">Produtividade</p>
+    <p>Encontre rápido o que precisa com filtros por mercado, setup, entrada, resultado e símbolo.</p>
+  </article>
+
+  <article class="recurso-card">
+    <p class="tag">Gestão e auditoria</p>
+    <p>Resete períodos, acompanhe histórico de ajustes e mantenha rastreabilidade do seu desempenho.</p>
+  </article>
+</section>
+
+<style>
+  .recursos-hero{
+    padding: 26px 0 14px;
+  }
+  .eyebrow{
+    text-transform: uppercase;
+    letter-spacing: .14em;
+    font-weight: 700;
+    color: rgba(148,163,184,.9);
+    margin: 0 0 6px;
+    font-size: 12px;
+  }
+  .recursos-title{
+    margin: 0;
+    font-size: clamp(30px, 4vw, 42px);
+    line-height: 1.1;
+    color: #fff;
+  }
+  .recursos-lede{
+    margin: 10px 0 0;
+    color: #cbd5e1;
+    font-size: 16px;
+    line-height: 1.55;
+    max-width: 720px;
+  }
+  .recursos-grid{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+    padding: 10px 0 32px;
+  }
+  .recurso-card{
+    padding: 16px 16px 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,.10);
+    background: rgba(255,255,255,.04);
+    box-shadow: 0 18px 50px rgba(0,0,0,.32);
+  }
+  .recurso-card .tag{
+    display: inline-block;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(148,163,184,.30);
+    background: linear-gradient(180deg, rgba(148,163,184,.16), rgba(148,163,184,.08));
+    font-size: 11px;
+    letter-spacing: .10em;
+    text-transform: uppercase;
+    color: #e2e8f0;
+    font-weight: 700;
+    margin: 0 0 10px;
+    box-shadow: 0 10px 24px rgba(0,0,0,.18);
+  }
+    .recurso-card p{
+    margin: 0;
+    color: #cbd5e1;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+</style>
+{% endblock %}

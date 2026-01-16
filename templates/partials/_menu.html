@@ -1,0 +1,34 @@
+{% load static %}
+<!-- Topbar -->
+<header class="topbar">
+  <div class="container">
+    <div class="topbar-inner">
+      <a class="brand" href="{% url 'landing' %}">
+        <div class="logo-mark" aria-hidden="true" style="margin-right:10px; background:transparent; border:none; box-shadow:none; padding:0; width:auto; height:auto; display:flex; align-items:center; justify-content:center;">
+          <img src="{% static 'image/logo.png' %}" alt="Logo" style="height:60px; width:auto; display:block;" />
+        </div>
+      </a>
+
+      <nav aria-label="Navegação principal">
+              <a class="navlink" href="{% url 'landing' %}#home">Home</a>
+              <a class="navlink" href="{% url 'landing' %}#sobre">Sobre</a>
+              <a class="navlink" href="{% url 'recursos' %}">Recursos</a>
+              <a class="navlink" href="{% url 'landing' %}#analytics">Analytics</a>
+      </nav>
+
+      {% if user.is_authenticated %}
+        <div style="display:flex; gap:10px; align-items:center;">
+          <a class="btn btn-primary" href="{% url 'trades:dashboard' %}">Dashboard</a>
+          <a class="btn" href="{% url 'trades:trade_add' %}">Registrar trade</a>
+          <a class="btn" href="{% url 'accounts:profile' %}">Perfil</a>
+          <a class="btn" href="{% url 'accounts:logout' %}">Sair</a>
+        </div>
+      {% else %}
+        <div style="display:flex; gap:10px; align-items:center;">
+          <a class="btn btn-primary" href="{% url 'accounts:register' %}">Cadastrar</a>
+          <a class="btn" href="{% url 'accounts:login' %}">Entrar</a>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</header>
