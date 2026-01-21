@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.shortcuts import redirect
 from django.urls import reverse
+from django.utils.safestring import mark_safe
 
 from .models import Plan
 
@@ -12,7 +13,12 @@ class PlanRequiredMixin(LoginRequiredMixin):
     """Protege views por plano (free/basic/premium)."""
 
     required_plan: str = Plan.BASIC
-    insufficient_message = "Recurso disponível apenas para assinantes do plano requerido."
+    insufficient_message = mark_safe(
+        'Recurso disponível apenas para os planos Basic e Premium. '
+        'Para contratar os planos Basic e Premium, entre em contato pelo '
+        '<a href="https://wa.me/5511975743767" target="_blank" rel="noopener">'
+        "WhatsApp</a>."
+    )
 
     def get_required_plan(self) -> str:
         return self.required_plan
@@ -52,7 +58,7 @@ def plan_required(required_plan: str = Plan.BASIC):
 
             messages.warning(
                 request,
-                "Recurso disponível apenas para assinantes do plano requerido.",
+                PlanRequiredMixin.insufficient_message,
             )
             return redirect(reverse("trades:dashboard"))
 

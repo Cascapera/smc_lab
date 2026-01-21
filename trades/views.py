@@ -13,6 +13,7 @@ from django.utils import timezone
 from django.views.generic import CreateView, TemplateView
 
 from accounts.mixins import PlanRequiredMixin
+from django.utils.safestring import mark_safe
 from accounts.models import Plan
 from .analytics import compute_user_dashboard
 from .forms import TradeForm
@@ -129,7 +130,11 @@ class DashboardView(LoginRequiredMixin, TemplateView):
 class AdvancedDashboardView(PlanRequiredMixin, TemplateView):
     template_name = "trades/dashboard_advanced.html"
     required_plan = Plan.PREMIUM
-    insufficient_message = "O Dashboard Avançado é exclusivo para o plano Premium."
+    insufficient_message = mark_safe(
+        "O Dashboard Avançado é exclusivo para o plano Premium. "
+        'Para contratar o Premium, entre em contato pelo '
+        '<a href="https://wa.me/5511975743767" target="_blank" rel="noopener">WhatsApp</a>.'
+    )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
