@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# opcional: coletar estáticos (se quiser servir via Whitenoise/nginx)
-# RUN python manage.py collectstatic --noinput
+# coletar estáticos para servir com Whitenoise
+RUN python manage.py collectstatic --noinput
 
 CMD ["gunicorn", "trader_portal.wsgi:application", "--bind", "0.0.0.0:8000"]
