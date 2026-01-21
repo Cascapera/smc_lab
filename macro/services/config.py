@@ -12,6 +12,7 @@ USER_AGENTS = [
 ]
 
 FETCH_DELAY_RANGE: Tuple[float, float] = (0.5, 1.0)
+RETRY_BACKOFF_RANGE: Tuple[float, float] = (1.0, 2.5)
 MAX_FETCH_ATTEMPTS = 3
 FETCH_TIMEOUT = 25
 FALLBACK_HOST = "https://r.jina.ai"
