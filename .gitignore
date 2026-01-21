@@ -44,3 +44,8 @@ painel_smc/dist/
 painel_smc/build/
 painel_smc/SMCTrend.zip
 painel_smc/SMCTrend.exe
+
+#ignora Celery Beat
+celerybeat-schedule
+celerybeat-schedule-shm
+celerybeat-schedule-wal

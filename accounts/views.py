@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from django.contrib import messages
-from django.contrib.auth.views import LogoutView as DjangoLogoutView
+from django.contrib.auth import logout
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
@@ -59,12 +59,6 @@ class RegisterView(View):
                 "profile_form": profile_form,
             },
         )
-
-
-from django.contrib.auth import logout
-from django.shortcuts import redirect
-
-
 class LogoutView(View):
     """
     Faz logout imediatamente (GET ou POST) e redireciona para a landing.

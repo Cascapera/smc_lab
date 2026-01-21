@@ -90,8 +90,6 @@ def compute_user_dashboard(user) -> dict[str, Any]:
     gains_qs = trades.filter(profit_amount__gt=0)
     losses_qs = trades.filter(profit_amount__lt=0)
 
-    gross_gain = gains_qs.aggregate(total=Coalesce(Sum("profit_amount"), Decimal("0")))["total"]
-    gross_loss = losses_qs.aggregate(total=Coalesce(Sum("profit_amount"), Decimal("0")))["total"]
     avg_gain = gains_qs.aggregate(avg=Coalesce(Avg("profit_amount"), Decimal("0")))["avg"]
     avg_loss = losses_qs.aggregate(avg=Coalesce(Avg("profit_amount"), Decimal("0")))["avg"]
     best_trade = trades.aggregate(best=Coalesce(Max("profit_amount"), Decimal("0")))["best"]

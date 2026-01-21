@@ -1,0 +1,37 @@
+# ============================================
+# Configuração de Produção - AWS Lightsail
+# ============================================
+# Copie este conteúdo para .env no servidor e preencha os valores
+
+# Django Settings
+DJANGO_SECRET_KEY=GERE_UMA_CHAVE_SECRETA_AQUI
+DJANGO_DEBUG=False
+DJANGO_ALLOWED_HOSTS=["smclab.com.br","www.smclab.com.br","SEU_IP_LIGHTSAIL"]
+
+# Database (PostgreSQL)
+# Formato: postgres://usuario:senha@postgres:5432/nome_banco
+DATABASE_URL=postgres://trader_user:SENHA_SUPER_SEGURA_AQUI@postgres:5432/trader_portal
+
+# Celery (Redis)
+CELERY_BROKER_URL=redis://redis:6379/0
+CELERY_RESULT_BACKEND=redis://redis:6379/0
+
+# Timezone
+TZ=America/Sao_Paulo
+
+# ============================================
+# INSTRUÇÕES:
+# ============================================
+# 1. Gere a chave secreta com:
+#    python3 -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+#
+# 2. Substitua SENHA_SUPER_SEGURA_AQUI por uma senha forte
+#    Use letras, números e caracteres especiais
+#    Exemplo: MinhaSenh@2024!Segura
+#
+# 3. Substitua SEU_IP_LIGHTSAIL pelo IP estático da sua instância Lightsail
+#    Você encontra o IP na página da instância no Lightsail
+#
+# 4. Se usar domínio, substitua smclab.com.br pelo seu domínio
+#
+# 5. NUNCA commite este arquivo com valores reais no Git!

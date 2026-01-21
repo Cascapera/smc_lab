@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import environ
+from celery.schedules import crontab
 
 # --------------------------------------------------------------------------------------
 # Paths & environment
@@ -48,6 +49,7 @@ THIRD_PARTY_APPS: list[str] = []
 LOCAL_APPS: list[str] = [
     "accounts",
     "trades",
+    "macro",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -145,3 +147,16 @@ SECURE_PROXY_SSL_HEADER = env.tuple(
 LOGIN_URL = "accounts:login"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "landing"
+
+# Celery
+CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://localhost:6379/0")
+CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default=CELERY_BROKER_URL)
+CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_TASK_ALWAYS_EAGER", default=False)
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = USE_TZ
+CELERY_BEAT_SCHEDULE = {
+    "macro-collect-every-5min": {
+        "task": "macro.tasks.collect_macro_cycle",
+        "schedule": crontab(minute="*/5"),  # 00,05,10...
+    },
+}
