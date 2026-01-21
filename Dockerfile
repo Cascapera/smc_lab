@@ -10,6 +10,9 @@ RUN apt-get update && apt-get install -y build-essential libpq-dev curl && rm -r
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Playwright (TradingView) + Chromium + dependências do sistema
+RUN python -m playwright install --with-deps chromium
+
 COPY . .
 
 # coletar estáticos para servir com Whitenoise
