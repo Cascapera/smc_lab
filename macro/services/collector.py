@@ -37,9 +37,12 @@ def execute_cycle(measurement_time: Optional[datetime] = None) -> None:
     variations: List[MacroVariation] = []
     scores: List[int] = []
     variation_sum = 0.0
+    total_bytes = 0
 
     for asset in assets:
         outcome = fetch_html(asset)
+        payload_bytes = len(outcome.html.encode("utf-8")) if outcome.html else 0
+        total_bytes += payload_bytes
         parser = PARSER_BY_SOURCE.get(asset.source_key)
         variation_text = parser(outcome.html) if parser and outcome.html else None
         market_phase = ""
@@ -69,6 +72,7 @@ def execute_cycle(measurement_time: Optional[datetime] = None) -> None:
                 block_reason=outcome.block_reason or "",
                 source_excerpt=excerpt,
                 market_phase=market_phase,
+                payload_bytes=payload_bytes or None,
             )
         )
 
@@ -101,4 +105,9 @@ def execute_cycle(measurement_time: Optional[datetime] = None) -> None:
             },
         )
 
-    logger.info("[macro] Ciclo concluído (%s ativos) para %s", len(variations), label)
+    logger.info(
+        "[macro] Ciclo concluído (%s ativos) para %s (payload ~%.2f KB)",
+        len(variations),
+        label,
+        total_bytes / 1024,
+    )

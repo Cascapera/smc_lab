@@ -38,6 +38,7 @@ class MacroVariation(models.Model):
     block_reason = models.CharField(max_length=120, blank=True)
     source_excerpt = models.TextField(blank=True)
     market_phase = models.CharField(max_length=10, blank=True)
+    payload_bytes = models.IntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
