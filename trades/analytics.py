@@ -51,7 +51,7 @@ def _aggregate_by(queryset, field: str, display_map: dict[str, str] | None = Non
 
 
 def compute_user_dashboard(user) -> dict[str, Any]:
-    profile = Profile.objects.get(user=user)
+    profile, _ = Profile.objects.get_or_create(user=user)
 
     trades = Trade.objects.filter(user=user)
     if profile.last_reset_at:

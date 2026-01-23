@@ -14,7 +14,7 @@ from django.views.generic import CreateView, TemplateView
 
 from accounts.mixins import PlanRequiredMixin
 from django.utils.safestring import mark_safe
-from accounts.models import Plan
+from accounts.models import Plan, Profile
 from .analytics import compute_user_dashboard
 from .forms import TradeForm
 from .models import (
@@ -88,7 +88,7 @@ class DashboardView(LoginRequiredMixin, TemplateView):
 
         # Lista de trades com filtros
         trades_qs = Trade.objects.filter(user=self.request.user)
-        profile = getattr(self.request.user, "profile", None)
+        profile = Profile.objects.filter(user=self.request.user).first()
         if profile and profile.last_reset_at:
             trades_qs = trades_qs.filter(executed_at__gte=profile.last_reset_at)
 
@@ -142,7 +142,7 @@ class AdvancedDashboardView(PlanRequiredMixin, TemplateView):
         context["dashboard"] = base
 
         trades_qs = Trade.objects.filter(user=self.request.user).order_by("executed_at")
-        profile = getattr(self.request.user, "profile", None)
+        profile = Profile.objects.filter(user=self.request.user).first()
         if profile and profile.last_reset_at:
             trades_qs = trades_qs.filter(executed_at__gte=profile.last_reset_at)
 
@@ -158,11 +158,11 @@ class AdvancedDashboardView(PlanRequiredMixin, TemplateView):
 
         # Streaks
         longest_win = longest_loss = current_win = current_loss = 0
-        for trade in trades_qs:
-            if trade.profit_amount > 0:
+        for profit_amount in trades_qs.values_list("profit_amount", flat=True):
+            if profit_amount > 0:
                 current_win += 1
                 current_loss = 0
-            elif trade.profit_amount < 0:
+            elif profit_amount < 0:
                 current_loss += 1
                 current_win = 0
             else:
