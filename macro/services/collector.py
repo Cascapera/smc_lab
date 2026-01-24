@@ -14,6 +14,7 @@ from macro.services.parsers import PARSER_BY_SOURCE
 from macro.services.utils import (
     align_measurement_time,
     extract_relevant_text,
+    is_market_closed,
     parse_variation_percent,
 )
 
@@ -30,10 +31,30 @@ def execute_cycle(measurement_time: Optional[datetime] = None) -> None:
     measurement_time = measurement_time or align_measurement_time(
         timezone.now(), config.TARGET_INTERVAL_MINUTES
     )
+    if is_market_closed(measurement_time):
+        logger.info("[macro] Coleta pausada (janela de mercado fechada).")
+        return
     label = measurement_time.strftime("%Y-%m-%d %H:%M")
     logger.info("[macro] Iniciando ciclo para %s", label)
 
     assets = list(_iter_assets())
+    last_variations = {}
+    if assets:
+        last_qs = (
+            MacroVariation.objects.filter(
+                asset__in=assets, variation_decimal__isnull=False
+            )
+            .order_by("asset_id", "-measurement_time")
+            .values(
+                "asset_id",
+                "variation_decimal",
+                "variation_text",
+                "market_phase",
+            )
+        )
+        for row in last_qs:
+            if row["asset_id"] not in last_variations:
+                last_variations[row["asset_id"]] = row
     variations: List[MacroVariation] = []
     scores: List[int] = []
     variation_sum = 0.0
@@ -60,6 +81,18 @@ def execute_cycle(measurement_time: Optional[datetime] = None) -> None:
         status = outcome.status
         if variation_text is None and status == "ok":
             status = "no_data"
+
+        if variation_decimal is None:
+            fallback = last_variations.get(asset.id)
+            if fallback:
+                variation_decimal = fallback["variation_decimal"]
+                if not variation_text:
+                    variation_text = fallback["variation_text"]
+                if not market_phase:
+                    market_phase = fallback["market_phase"] or ""
+                status = "fallback"
+                if not outcome.block_reason:
+                    outcome.block_reason = "last_known"
 
         excerpt = extract_relevant_text(outcome.html or "")
         variations.append(

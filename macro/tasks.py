@@ -5,7 +5,7 @@ from django.utils import timezone
 
 from macro.services import config
 from macro.services.collector import execute_cycle
-from macro.services.utils import align_measurement_time
+from macro.services.utils import align_measurement_time, is_market_closed
 
 
 logger = logging.getLogger(__name__)
@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 )
 def collect_macro_cycle(self) -> None:
     """Task Celery que dispara um ciclo de coleta."""
+    if is_market_closed():
+        logger.info("[macro] Coleta pausada (janela de mercado fechada).")
+        return
     measurement_time = align_measurement_time(
         timezone.now(), interval_minutes=config.TARGET_INTERVAL_MINUTES
     )

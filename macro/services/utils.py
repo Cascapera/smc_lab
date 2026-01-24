@@ -45,3 +45,17 @@ def parse_variation_percent(value: Optional[str]) -> Optional[float]:
         return float(number) / 100.0
     except ValueError:
         return None
+
+
+def is_market_closed(dt: Optional[datetime] = None) -> bool:
+    """Retorna True quando a janela de coleta deve pausar (sex 19h até dom 19h)."""
+    local_dt = timezone.localtime(dt or timezone.now())
+    weekday = local_dt.weekday()  # 0=Mon .. 6=Sun
+    hour = local_dt.hour
+    if weekday == 4 and hour >= 19:
+        return True
+    if weekday == 5:
+        return True
+    if weekday == 6 and hour < 19:
+        return True
+    return False
