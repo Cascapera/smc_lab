@@ -219,6 +219,54 @@
     if (dxy) document.getElementById("dxy-value").textContent = dxy.variation_text || "--";
   }
 
+  function formatTimeLabel(timeStr) {
+    try {
+      const date = new Date(timeStr);
+      const hours = date.getHours().toString().padStart(2, '0');
+      const minutes = date.getMinutes().toString().padStart(2, '0');
+      return `${hours}:${minutes}`;
+    } catch {
+      return timeStr;
+    }
+  }
+
+  function formatTimeLabelFromDate(date) {
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return `${hours}:${minutes}`;
+  }
+
+  function roundToNearestHalfHour(timeStr) {
+    try {
+      const date = new Date(timeStr);
+      if (Number.isNaN(date.getTime())) {
+        return null;
+      }
+      const minutes = date.getMinutes();
+      if (minutes >= 45) {
+        date.setHours(date.getHours() + 1);
+        date.setMinutes(0, 0, 0);
+      } else if (minutes >= 15) {
+        date.setMinutes(30, 0, 0);
+      } else {
+        date.setMinutes(0, 0, 0);
+      }
+      return date;
+    } catch {
+      return null;
+    }
+  }
+
+  function shouldShowLabel(timeStr, index) {
+    try {
+      const date = new Date(timeStr);
+      const minutes = date.getMinutes();
+      return minutes === 0 || minutes === 30;
+    } catch {
+      return index % 2 === 0;
+    }
+  }
+
   function buildFlowChart(ctx, labels, data) {
     return new Chart(ctx, {
       type: "line",
@@ -263,9 +311,22 @@
     updateTickers(variations);
 
     const labels = scores.map((s) => s.measurement_time).reverse();
+    let lastLabel = null;
+    const formattedLabels = labels.map((label, index) => {
+      const roundedDate = roundToNearestHalfHour(label);
+      if (!roundedDate) {
+        return shouldShowLabel(label, index) ? formatTimeLabel(label) : "";
+      }
+      const roundedLabel = formatTimeLabelFromDate(roundedDate);
+      if (roundedLabel !== lastLabel) {
+        lastLabel = roundedLabel;
+        return roundedLabel;
+      }
+      return "";
+    });
     const data = scores.map((s) => s.total_score).reverse();
     const ctx = document.getElementById("smc-flow");
-    if (ctx) buildFlowChart(ctx, labels, data);
+    if (ctx) buildFlowChart(ctx, formattedLabels, data);
   }
 
   initPanel();
