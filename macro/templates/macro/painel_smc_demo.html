@@ -311,16 +311,7 @@
     updateTickers(variations);
 
     const labels = scores.map((s) => s.measurement_time).reverse();
-    const formattedLabels = labels.map((label, index) => {
-      if (index % 6 !== 0) {
-        return "";
-      }
-      const roundedDate = roundToNearestHalfHour(label);
-      if (!roundedDate) {
-        return formatTimeLabel(label);
-      }
-      return formatTimeLabelFromDate(roundedDate);
-    });
+    const formattedLabels = labels.map((label) => formatTimeLabel(label));
     const data = scores.map((s) => s.total_score).reverse();
     const ctx = document.getElementById("smc-flow");
     if (ctx) buildFlowChart(ctx, formattedLabels, data);

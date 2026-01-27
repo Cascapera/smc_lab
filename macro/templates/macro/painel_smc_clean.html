@@ -280,17 +280,8 @@
       const maxAbs = Math.max(Math.abs(minVal), Math.abs(maxVal), 0.01);
       const padding = maxAbs * 0.2;
 
-      // Marcar a cada 6 cotações, arredondando para 00/30
-      const formattedLabels = labels.map((label, index) => {
-        if (index % 6 !== 0) {
-          return '';
-        }
-        const roundedDate = roundToNearestHalfHour(label);
-        if (!roundedDate) {
-          return formatTimeLabel(label);
-        }
-        return formatTimeLabelFromDate(roundedDate);
-      });
+      // Mostrar horário em todas as cotações (sem arredondar)
+      const formattedLabels = labels.map((label) => formatTimeLabel(label));
 
       const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
       gradient.addColorStop(0, "rgba(112, 224, 0, 0.8)");
