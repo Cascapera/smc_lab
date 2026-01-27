@@ -276,18 +276,15 @@
     const maxAbs = Math.max(Math.abs(minVal), Math.abs(maxVal), 0.01);
     const padding = maxAbs * 0.2;
 
-    let lastLabel = null;
     const formattedLabels = labels.map((label, index) => {
+      if (index % 6 !== 0) {
+        return "";
+      }
       const roundedDate = roundToNearestHalfHour(label);
       if (!roundedDate) {
-        return shouldShowLabel(label, index) ? formatTimeLabel(label) : "";
+        return formatTimeLabel(label);
       }
-      const roundedLabel = formatTimeLabelFromDate(roundedDate);
-      if (roundedLabel !== lastLabel) {
-        lastLabel = roundedLabel;
-        return roundedLabel;
-      }
-      return "";
+      return formatTimeLabelFromDate(roundedDate);
     });
 
     const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
