@@ -1,4 +1,4 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 {% load static %}
 
 {% block content %}
@@ -39,6 +39,17 @@
     align-items:center;
     flex-wrap: wrap;
   }
+  .actions form{
+    margin:0;
+    padding:0;
+    border:0;
+    background: transparent;
+    display:inline-flex;
+    align-items:center;
+  }
+  .actions .btn{
+    white-space: nowrap;
+  }
   .btn{
     display:inline-flex;
     align-items:center;
@@ -63,6 +74,12 @@
     background: linear-gradient(180deg, rgba(59,130,246,.95), rgba(34,211,238,.80));
     color: #03111A;
     box-shadow: 0 18px 40px rgba(34,211,238,.18);
+  }
+  .btn-danger{
+    border-color: rgba(248,113,113,.35);
+    background: linear-gradient(180deg, rgba(248,113,113,.95), rgba(239,68,68,.85));
+    color: #fff;
+    box-shadow: 0 18px 40px rgba(239,68,68,.18);
   }
   .content{
     padding: 26px;
@@ -114,7 +131,31 @@
     align-items:center;
     flex-wrap:wrap;
   }
-  .note{ color: var(--muted); font-size: 13px; }
+  .actions-bottom form{
+    margin:0;
+    display:inline-flex;
+    align-items:center;
+  }
+  .note{
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1;
+    display:inline-flex;
+    align-items:center;
+  }
+  .text-link{
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1;
+    text-decoration: underline;
+    display:inline-flex;
+    align-items:center;
+    cursor: pointer;
+    margin-top: 2px; /* aumente se quiser mais abaixo */
+  }
+  .text-link:hover{
+    color: var(--text);
+  }
   @media (max-width: 900px){
     .content{ grid-template-columns: 1fr; }
     .grid{ grid-template-columns: 1fr; }
@@ -124,11 +165,7 @@
 <section class="page-trade">
   <div class="card">
     <div class="card-head">
-      <h1 class="title">Registrar nova operação</h1>
-      <div class="actions">
-        <a class="btn" href="{% url 'trades:dashboard' %}">Dashboard</a>
-        <a class="btn" href="{% url 'landing' %}">Voltar</a>
-      </div>
+      <h1 class="title">{% if object %}Editar operação{% else %}Registrar nova operação{% endif %}</h1>
     </div>
     <div class="content">
       <form method="post" enctype="multipart/form-data" novalidate>
@@ -163,8 +200,17 @@
           {% endfor %}
         </div>
         <div class="actions-bottom">
-          <button class="btn btn-primary" type="submit">Salvar operação</button>
-          <span class="note"><a href="{% url 'landing' %}">Voltar para a página inicial</a></span>
+          <button class="btn btn-primary" type="submit">{% if object %}Salvar alterações{% else %}Salvar operação{% endif %}</button>
+          <span class="note">
+            <a class="text-link" href="{{ next_url|default:'/' }}">Voltar</a>
+          </span>
+          {% if object %}
+          <form method="post" action="{% url 'trades:trade_delete' object.pk %}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ next_url|default:'' }}">
+            <a class="text-link" href="#" onclick="return confirm('Deseja excluir esta operação?') && this.closest('form').submit();">Excluir trade</a>
+          </form>
+          {% endif %}
         </div>
       </form>
     </div>

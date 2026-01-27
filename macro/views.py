@@ -71,6 +71,13 @@ class SMCDashboardView(PlanRequiredMixin, TemplateView):
     required_plan = Plan.BASIC
 
 
+class SMCDashboardDemoView(PlanRequiredMixin, TemplateView):
+    """Página demo do Painel SMC (restrita a Basic/Premium)."""
+
+    template_name = "macro/painel_smc_demo.html"
+    required_plan = Plan.BASIC
+
+
 class SMCCleanView(PlanRequiredMixin, TemplateView):
     """Versão limpa do Painel SMC sem topo/menu (restrita a Basic/Premium)."""
 

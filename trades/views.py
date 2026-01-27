@@ -7,10 +7,11 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.paginator import Paginator
 from django.db.models import Avg, Sum
 from django.db.models.functions import Coalesce
-from django.shortcuts import redirect
-from django.urls import reverse_lazy
+from django.shortcuts import get_object_or_404, redirect
+from django.urls import reverse, reverse_lazy
 from django.utils import timezone
-from django.views.generic import CreateView, TemplateView
+from django.views import View
+from django.views.generic import CreateView, TemplateView, UpdateView
 
 from accounts.mixins import PlanRequiredMixin
 from django.utils.safestring import mark_safe
@@ -61,6 +62,59 @@ class TradeCreateView(LoginRequiredMixin, CreateView):
         initial = super().get_initial()
         initial.setdefault("executed_at", timezone.localtime().replace(microsecond=0))
         return initial
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["next_url"] = self.request.GET.get("next") or self.request.META.get(
+            "HTTP_REFERER"
+        ) or reverse("trades:dashboard")
+        return context
+
+
+class TradeUpdateView(LoginRequiredMixin, UpdateView):
+    model = Trade
+    form_class = TradeForm
+    template_name = "trades/trade_form.html"
+
+    def get_queryset(self):
+        return Trade.objects.filter(user=self.request.user)
+
+    def form_valid(self, form: TradeForm):
+        trade: Trade = form.save(commit=False)
+        trade.user = self.request.user
+
+        executed_at = form.cleaned_data["executed_at"]
+        if timezone.is_naive(executed_at):
+            executed_at = timezone.make_aware(executed_at, timezone.get_current_timezone())
+        trade.executed_at = executed_at
+
+        trade.save()
+        self.object = trade
+        messages.success(self.request, "Operação atualizada com sucesso!")
+        return redirect(self.get_success_url())
+
+    def form_invalid(self, form: TradeForm):
+        messages.error(self.request, "Verifique os erros no formulário.")
+        return super().form_invalid(form)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["next_url"] = self.request.GET.get("next") or self.request.META.get(
+            "HTTP_REFERER"
+        ) or reverse("trades:dashboard")
+        return context
+
+    def get_success_url(self):
+        return self.request.GET.get("next") or reverse("trades:dashboard")
+
+
+class TradeDeleteView(LoginRequiredMixin, View):
+    def post(self, request, pk: int):
+        trade = get_object_or_404(Trade, pk=pk, user=request.user)
+        trade.delete()
+        messages.success(request, "Operação removida com sucesso!")
+        next_url = request.POST.get("next") or request.META.get("HTTP_REFERER")
+        return redirect(next_url or reverse("trades:dashboard"))
 
 
 class DashboardView(LoginRequiredMixin, TemplateView):

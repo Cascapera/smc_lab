@@ -15,9 +15,9 @@
       font-family: "Inter", system-ui, -apple-system, sans-serif;
     }
     .container {
-      max-width: 1180px;
+      max-width: 882px;
       margin: 0 auto;
-      padding: 20px 18px 32px;
+      padding: 20px 0 32px;
     }
     .smc-grid {
       display: grid;
@@ -212,6 +212,29 @@
       return results;
     }
 
+    function formatTimeLabel(timeStr) {
+      try {
+        const date = new Date(timeStr);
+        const hours = date.getHours().toString().padStart(2, '0');
+        const minutes = date.getMinutes().toString().padStart(2, '0');
+        return `${hours}:${minutes}`;
+      } catch {
+        return timeStr;
+      }
+    }
+
+    function shouldShowLabel(timeStr, index) {
+      try {
+        const date = new Date(timeStr);
+        const minutes = date.getMinutes();
+        // Mostrar apenas nos minutos 00 e 30
+        return minutes === 0 || minutes === 30;
+      } catch {
+        // Se não conseguir parsear, mostrar a cada 2 labels (aproximadamente)
+        return index % 2 === 0;
+      }
+    }
+
     function renderFlowChart(canvas, scoresAsc) {
       const ctx = canvas.getContext("2d");
       const labels = scoresAsc.map((s) => s.measurement_time);
@@ -230,6 +253,14 @@
       const maxAbs = Math.max(Math.abs(minVal), Math.abs(maxVal), 0.01);
       const padding = maxAbs * 0.2;
 
+      // Formatar labels para mostrar apenas horários de 30 em 30 minutos
+      const formattedLabels = labels.map((label, index) => {
+        if (shouldShowLabel(label, index)) {
+          return formatTimeLabel(label);
+        }
+        return '';
+      });
+
       const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
       gradient.addColorStop(0, "rgba(112, 224, 0, 0.8)");
       gradient.addColorStop(0.70, "rgba(120, 120, 120, 0.05)");
@@ -239,7 +270,7 @@
       return new Chart(ctx, {
         type: "line",
         data: {
-          labels,
+          labels: formattedLabels,
           datasets: [
             {
               label: "Variação soma",
@@ -259,7 +290,19 @@
           plugins: { legend: { display: false } },
           scales: {
             x: {
-              display: false,
+              display: true,
+              grid: {
+                color: "rgba(255,255,255,0.05)",
+                display: false,
+              },
+              ticks: {
+                color: "rgba(255,255,255,0.6)",
+                font: {
+                  size: 11,
+                },
+                maxRotation: 0,
+                minRotation: 0,
+              },
             },
             y: {
               grid: {

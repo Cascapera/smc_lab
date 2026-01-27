@@ -3,7 +3,7 @@ services:
     build: .
     command: gunicorn trader_portal.wsgi:application --bind 0.0.0.0:8000
     ports:
-      - "8000:8000"
+      - "8001:8000"
     env_file: .env
     depends_on:
       - postgres
@@ -33,9 +33,9 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: trader_portal
-      POSTGRES_USER: trader_user
-      POSTGRES_PASSWORD: senha_super_segura
+      POSTGRES_DB: ${POSTGRES_DB:-trader_portal}
+      POSTGRES_USER: ${POSTGRES_USER:-trader_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:

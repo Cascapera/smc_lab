@@ -53,6 +53,62 @@ def _get_playwright_proxy() -> Optional[Dict[str, str]]:
     return proxy
 
 
+def _classify_playwright_error(exc: Exception) -> Tuple[str, str]:
+    """
+    Classifica erros do Playwright em categorias específicas.
+    Retorna (block_reason, error_type) para melhor diagnóstico.
+    """
+    error_msg = str(exc).lower()
+    error_type = type(exc).__name__
+    
+    # Bloqueio de IP/proxy
+    if any(keyword in error_msg for keyword in [
+        "err_aborted",
+        "err_connection_refused",
+        "err_connection_reset",
+        "err_connection_closed",
+        "net::err_",
+        "403",
+        "forbidden",
+        "blocked",
+        "access denied",
+        "frame was detached",
+    ]):
+        return "playwright_ip_block", error_type
+    
+    # Timeout
+    if any(keyword in error_msg for keyword in [
+        "timeout",
+        "timed out",
+        "waiting for",
+        "navigation timeout",
+    ]):
+        return "playwright_timeout", error_type
+    
+    # Erro de proxy
+    if any(keyword in error_msg for keyword in [
+        "proxy",
+        "tunnel",
+        "socks",
+        "proxy authentication",
+    ]):
+        return "playwright_proxy_error", error_type
+    
+    # Erro de conexão/rede
+    if any(keyword in error_msg for keyword in [
+        "connection",
+        "network",
+        "dns",
+        "resolve",
+        "unreachable",
+        "no internet",
+    ]):
+        return "playwright_connection_error", error_type
+    
+    # Erro genérico
+    return "playwright_error", error_type
+
+
 @dataclass
 class FetchOutcome:
     html: Optional[str]
@@ -88,8 +144,16 @@ def _fetch_tradingview_playwright(asset: MacroAsset) -> FetchOutcome:
             if not html:
                 return FetchOutcome(html=None, status="no_data", block_reason="empty_html")
             return FetchOutcome(html=html, status="ok")
-    except Exception:
-        return FetchOutcome(html=None, status="fetch_error", block_reason="playwright_error")
+    except Exception as exc:
+        block_reason, error_type = _classify_playwright_error(exc)
+        logger.warning(
+            "[macro] Erro Playwright TradingView (%s): %s [%s]",
+            asset.name,
+            str(exc)[:200],
+            block_reason,
+        )
+        status = "blocked" if block_reason == "playwright_ip_block" else "fetch_error"
+        return FetchOutcome(html=None, status=status, block_reason=block_reason)
 
 
 def _fetch_investing_playwright(asset: MacroAsset) -> FetchOutcome:
@@ -111,8 +175,16 @@ def _fetch_investing_playwright(asset: MacroAsset) -> FetchOutcome:
             if not html:
                 return FetchOutcome(html=None, status="no_data", block_reason="empty_html")
             return FetchOutcome(html=html, status="ok")
-    except Exception:
-        return FetchOutcome(html=None, status="fetch_error", block_reason="playwright_error")
+    except Exception as exc:
+        block_reason, error_type = _classify_playwright_error(exc)
+        logger.warning(
+            "[macro] Erro Playwright Investing (%s): %s [%s]",
+            asset.name,
+            str(exc)[:200],
+            block_reason,
+        )
+        status = "blocked" if block_reason == "playwright_ip_block" else "fetch_error"
+        return FetchOutcome(html=None, status=status, block_reason=block_reason)
 
 
 def _resolve_xhr_cache_path() -> Path:
@@ -272,7 +344,14 @@ def _discover_tradingview_xhr_endpoint(asset: MacroAsset) -> Optional[Tuple[str,
                 page.wait_for_timeout(config.PLAYWRIGHT_WAIT_MS)
             browser.close()
     except Exception as exc:
-        logger.warning("[macro] Falha ao descobrir XHR do TradingView (%s): %s", asset.name, exc)
+        block_reason, error_type = _classify_playwright_error(exc)
+        logger.warning(
+            "[macro] Falha ao descobrir XHR do TradingView (%s): %s [%s - %s]",
+            asset.name,
+            str(exc)[:200],
+            block_reason,
+            error_type,
+        )
         return None
 
     if endpoint_url:
@@ -339,7 +418,14 @@ def _discover_investing_xhr_endpoint(asset: MacroAsset) -> Optional[Tuple[str, O
                 page.wait_for_timeout(config.PLAYWRIGHT_WAIT_MS)
             browser.close()
     except Exception as exc:
-        logger.warning("[macro] Falha ao descobrir XHR do Investing (%s): %s", asset.name, exc)
+        block_reason, error_type = _classify_playwright_error(exc)
+        logger.warning(
+            "[macro] Falha ao descobrir XHR do Investing (%s): %s [%s - %s]",
+            asset.name,
+            str(exc)[:200],
+            block_reason,
+            error_type,
+        )
         return None
 
     if endpoint_url:
