@@ -280,8 +280,7 @@
       const maxAbs = Math.max(Math.abs(minVal), Math.abs(maxVal), 0.01);
       const padding = maxAbs * 0.2;
 
-      // Mostrar horário em todas as cotações (sem arredondar)
-      const formattedLabels = labels.map((label) => formatTimeLabel(label));
+      const formattedLabels = labels;
 
       const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
       gradient.addColorStop(0, "rgba(112, 224, 0, 0.8)");
@@ -312,19 +311,8 @@
           plugins: { legend: { display: false } },
           scales: {
             x: {
-              display: true,
-              grid: {
-                color: "rgba(255,255,255,0.05)",
-                display: false,
-              },
-              ticks: {
-                color: "rgba(255,255,255,0.6)",
-                font: {
-                  size: 11,
-                },
-                maxRotation: 0,
-                minRotation: 0,
-              },
+              display: false,
+              grid: { display: false },
             },
             y: {
               grid: {

@@ -311,7 +311,7 @@
     updateTickers(variations);
 
     const labels = scores.map((s) => s.measurement_time).reverse();
-    const formattedLabels = labels.map((label) => formatTimeLabel(label));
+    const formattedLabels = labels;
     const data = scores.map((s) => s.total_score).reverse();
     const ctx = document.getElementById("smc-flow");
     if (ctx) buildFlowChart(ctx, formattedLabels, data);
