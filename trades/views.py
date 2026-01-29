@@ -7,6 +7,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.paginator import Paginator
 from django.db.models import Avg, Sum
 from django.db.models.functions import Coalesce
+from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
@@ -115,6 +116,16 @@ class TradeDeleteView(LoginRequiredMixin, View):
         messages.success(request, "Operação removida com sucesso!")
         next_url = request.POST.get("next") or request.META.get("HTTP_REFERER")
         return redirect(next_url or reverse("trades:dashboard"))
+
+
+class TradeScreenshotView(LoginRequiredMixin, View):
+    def get(self, request, pk: int):
+        trade = get_object_or_404(Trade, pk=pk, user=request.user)
+        if not trade.screenshot:
+            raise Http404("Captura não encontrada.")
+
+        screenshot_file = trade.screenshot.open("rb")
+        return FileResponse(screenshot_file, as_attachment=False)
 
 
 class DashboardView(LoginRequiredMixin, TemplateView):

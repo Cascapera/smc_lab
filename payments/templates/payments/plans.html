@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="container" style="padding: 24px 0;">
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+    <h1 style="margin:0;">Planos</h1>
+    <span style="color:#cbd5e1;font-size:13px;">Escolha o plano ideal para você</span>
+  </div>
+
+  <div style="margin-top:10px;color:#cbd5e1;font-size:14px;">
+    {% if profile %}
+      Plano atual: <strong>{{ profile.get_plan_display }}</strong>
+      {% if profile.plan_expires_at %}
+        (expira em {{ profile.plan_expires_at|date:"d/m/Y H:i" }})
+      {% endif %}
+    {% endif %}
+  </div>
+
+  {% if trial_days|default:0|add:0 > 0 %}
+    <div style="margin-top:8px;color:#cbd5e1;font-size:13px;">
+      Teste grátis de {{ trial_days }} dias em qualquer plano.
+    </div>
+  {% endif %}
+
+  <div style="margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+    <button class="btn btn-primary" type="button" data-billing-toggle="annual">Anual</button>
+    <button class="btn" type="button" data-billing-toggle="monthly">Mensal</button>
+  </div>
+
+  <div style="display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin-top:18px;">
+    <div style="background:#0b1220;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;display:flex;flex-direction:column;" data-billing="monthly">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <h3 style="margin:0;">Basic Mensal</h3>
+        <span style="font-size:12px;color:#38bdf8;letter-spacing:.08em;text-transform:uppercase;">Assinatura</span>
+      </div>
+      <div style="font-size:24px;font-weight:800;margin-top:8px;">
+        79,90 BRL
+        <span style="font-size:13px;color:#cbd5e1;font-weight:600;">/ mês</span>
+      </div>
+      <div style="color:#94a3b8;font-size:13px;margin-top:2px;">Assinatura mensal</div>
+      <ul style="margin:12px 0 0;padding-left:18px;color:#cbd5e1;font-size:14px;display:grid;gap:6px;min-height:110px;">
+        <li>Acesso ao Painel SMC.</li>
+        <li>Registro de operações.</li>
+        <li>Acesso ao Dashboard.</li>
+      </ul>
+      <a class="btn btn-primary" href="{% url 'payments:checkout' 'basic_monthly' %}" style="margin-top:auto;">Assinar Basic Mensal</a>
+    </div>
+
+    <div style="background:#0b1220;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;position:relative;overflow:hidden;display:flex;flex-direction:column;" data-billing="annual">
+      <div style="position:absolute;top:8px;right:-92px;transform:rotate(22deg);background:linear-gradient(135deg,#22d3ee,#3b82f6);color:#03111A;font-weight:800;font-size:17.6px;padding:10.6px 95px 10.6px 77.8px;letter-spacing:.08em;text-transform:uppercase;">~50% OFF</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <h3 style="margin:0;">Basic Anual</h3>
+        <span style="font-size:12px;color:#34d399;letter-spacing:.08em;text-transform:uppercase;">Mais vendido</span>
+      </div>
+      <div style="margin-top:10px;">
+        <div style="color:#94a3b8;font-size:13px;text-decoration:line-through;">De: 718,80 BRL</div>
+        <div style="font-size:26px;font-weight:800;color:#22d3ee;margin-top:4px;">
+          12 x 29,99 BRL
+        </div>
+        <div style="color:#cbd5e1;font-size:13px;margin-top:2px;">Ou 359,88 BRL à vista</div>
+      </div>
+      <ul style="margin:12px 0 0;padding-left:18px;color:#cbd5e1;font-size:14px;display:grid;gap:6px;min-height:80px;">
+        <li>Acesso ao Painel SMC.</li>
+        <li>Registro de operações.</li>
+        <li>Acesso ao Dashboard.</li>
+      </ul>
+      <a class="btn btn-primary" href="{% url 'payments:checkout' 'basic_annual' %}" style="margin-top:auto;">Assinar Basic Anual</a>
+    </div>
+
+    <div style="background:#0b1220;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;display:flex;flex-direction:column;" data-billing="monthly">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <h3 style="margin:0;">Premium Mensal</h3>
+        <span style="font-size:12px;color:#38bdf8;letter-spacing:.08em;text-transform:uppercase;">Assinatura</span>
+      </div>
+      <div style="font-size:24px;font-weight:800;margin-top:8px;">
+        129,90 BRL
+        <span style="font-size:13px;color:#cbd5e1;font-weight:600;">/ mês</span>
+      </div>
+      <div style="color:#94a3b8;font-size:13px;margin-top:2px;">Assinatura mensal</div>
+      <ul style="margin:12px 0 0;padding-left:18px;color:#cbd5e1;font-size:14px;display:grid;gap:6px;min-height:120px;">
+        <li>Acesso ao Painel SMC.</li>
+        <li>Registro de operações.</li>
+        <li>Acesso ao Dashboard Avançado.</li>
+        <li>Analytics com IA (em breve)</li>
+      </ul>
+      <a class="btn btn-primary" href="{% url 'payments:checkout' 'premium_monthly' %}" style="margin-top:auto;">Assinar Premium Mensal</a>
+    </div>
+
+    <div style="background:#0b1220;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;position:relative;overflow:hidden;display:flex;flex-direction:column;" data-billing="annual">
+      <div style="position:absolute;top:8px;right:-92px;transform:rotate(22deg);background:linear-gradient(135deg,#22d3ee,#3b82f6);color:#03111A;font-weight:800;font-size:17.6px;padding:10.6px 95px 10.6px 77.8px;letter-spacing:.08em;text-transform:uppercase;">~54% OFF</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <h3 style="margin:0;">Premium Anual</h3>
+        <span style="font-size:12px;color:#34d399;letter-spacing:.08em;text-transform:uppercase;">Mais vendido</span>
+      </div>
+      <div style="margin-top:10px;">
+        <div style="color:#94a3b8;font-size:13px;text-decoration:line-through;">De: 1.558,80 BRL</div>
+        <div style="font-size:26px;font-weight:800;color:#22d3ee;margin-top:4px;">
+          12 x 59,99 BRL
+        </div>
+        <div style="color:#cbd5e1;font-size:13px;margin-top:2px;">Ou 719,80 BRL à vista</div>
+      </div>
+      <ul style="margin:12px 0 0;padding-left:18px;color:#cbd5e1;font-size:14px;display:grid;gap:6px;">
+        <li>Acesso ao Painel SMC.</li>
+        <li>Registro de operações.</li>
+        <li>Acesso ao Dashboard Avançado.</li>
+        <li>Analytics com IA (em breve)</li>
+      </ul>
+      <a class="btn btn-primary" href="{% url 'payments:checkout' 'premium_annual' %}" style="margin-top:auto;">Assinar Premium Anual</a>
+    </div>
+  </div>
+
+  <script>
+    const billingButtons = document.querySelectorAll("[data-billing-toggle]");
+    const billingCards = document.querySelectorAll("[data-billing]");
+
+    const setBilling = (mode) => {
+      billingCards.forEach((card) => {
+        card.style.display = card.dataset.billing === mode ? "block" : "none";
+      });
+      billingButtons.forEach((btn) => {
+        if (btn.dataset.billingToggle === mode) {
+          btn.classList.add("btn-primary");
+        } else {
+          btn.classList.remove("btn-primary");
+        }
+      });
+    };
+
+    billingButtons.forEach((btn) => {
+      btn.addEventListener("click", () => setBilling(btn.dataset.billingToggle));
+    });
+
+    setBilling("annual");
+  </script>
+</section>
+{% endblock %}

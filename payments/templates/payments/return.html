@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="container" style="padding: 24px 0;">
+  <h1 style="margin:0 0 8px;">Status do pagamento</h1>
+  {% if status == "approved" %}
+    <p style="color:#cbd5e1;">Pagamento aprovado! Seu plano será liberado em instantes.</p>
+  {% elif status == "rejected" %}
+    <p style="color:#cbd5e1;">Pagamento recusado. Tente novamente ou use outro método.</p>
+  {% elif status == "pending" %}
+    <p style="color:#cbd5e1;">Pagamento pendente. Assim que confirmado, seu plano será liberado.</p>
+  {% else %}
+    <p style="color:#cbd5e1;">Pagamento em processamento.</p>
+  {% endif %}
+
+  <div style="margin-top:16px;">
+    <a class="btn btn-primary" href="{% url 'payments:plans' %}">Voltar aos planos</a>
+    <a class="btn" href="{% url 'accounts:profile' %}">Ir para o perfil</a>
+  </div>
+</section>
+{% endblock %}

@@ -10,16 +10,15 @@
       </a>
 
       <nav aria-label="Navegação principal">
-              <a class="navlink" href="{% url 'landing' %}#home">Home</a>
-              <a class="navlink" href="{% url 'landing' %}#sobre">Sobre</a>
               <a class="navlink" href="{% url 'recursos' %}">Recursos</a>
+              <a class="navlink" href="{% url 'payments:plans' %}">Planos</a>
               <a class="navlink" href="{% url 'macro:painel' %}">Painel SMC</a>
       </nav>
 
       {% if user.is_authenticated %}
         <div style="display:flex; gap:10px; align-items:center;">
           <a class="btn btn-primary" href="{% url 'trades:dashboard' %}">Dashboard</a>
-          <a class="btn" href="{% url 'trades:trade_add' %}">Registrar trade</a>
+          <a class="btn" href="{% url 'trades:trade_add' %}">Novo Trade</a>
           <a class="btn" href="{% url 'accounts:profile' %}">Perfil</a>
           <a class="btn" href="{% url 'accounts:logout' %}">Sair</a>
         </div>

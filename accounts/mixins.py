@@ -15,8 +15,8 @@ class PlanRequiredMixin(LoginRequiredMixin):
     required_plan: str = Plan.BASIC
     insufficient_message = mark_safe(
         'Recurso disponível apenas para os planos Basic e Premium. '
-        'Para contratar os planos Basic e Premium, entre em contato pelo '
-        '<a href="https://wa.me/5511975743767" target="_blank" rel="noopener">'
+        'Assine um plano em <a href="/pagamentos/planos/">Planos</a> '
+        'ou fale pelo <a href="https://wa.me/5511975743767" target="_blank" rel="noopener">'
         "WhatsApp</a>."
     )
 

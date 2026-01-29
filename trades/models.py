@@ -227,7 +227,7 @@ class Trade(models.Model):
             FileExtensionValidator(["jpg", "jpeg", "png"]),
             validate_image_file_size,
         ],
-        help_text="Envie uma imagem PNG ou JPEG com até 5 MB.",
+        help_text="Envie uma imagem PNG ou JPEG com até 1 MB.",
     )
     notes = models.TextField("observações", blank=True)
     created_at = models.DateTimeField("criado em", auto_now_add=True)

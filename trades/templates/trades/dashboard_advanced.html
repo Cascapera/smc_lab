@@ -204,7 +204,7 @@
           <td data-colorize-cell="result" data-value="{{ trade.result_type }}" style="padding:0.4rem;text-align:right;border-bottom:1px solid #1e293b;">R$ {{ trade.profit_amount }}</td>
           <td style="padding:0.4rem;text-align:center;border-bottom:1px solid #1e293b;">
             {% if trade.screenshot %}
-              <a href="{{ trade.screenshot.url }}" target="_blank" title="Ver captura" style="color:#38bdf8;">📷</a>
+              <a href="{% url 'trades:trade_screenshot' trade.pk %}" target="_blank" title="Ver captura" style="color:#38bdf8;">📷</a>
             {% else %}
               —
             {% endif %}

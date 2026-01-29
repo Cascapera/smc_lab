@@ -100,6 +100,16 @@
     display:flex;
     flex-direction:column;
     gap:6px;
+    min-width: 0;
+  }
+  .field a{
+    display: inline-block;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .field-full{
+    grid-column: 1 / -1;
   }
   label{
     font-weight: 600;
@@ -190,7 +200,7 @@
                 {% for error in field.errors %}<div class="errors">{{ error }}</div>{% endfor %}
               </div>
             {% else %}
-              <div class="field">
+              <div class="field{% if field.name == 'notes' or field.name == 'screenshot' %} field-full{% endif %}">
                 <label for="{{ field.id_for_label }}">{{ field.label }}</label>
                 {{ field }}
                 {% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}

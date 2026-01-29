@@ -26,6 +26,16 @@ def _iter_assets() -> Iterable[MacroAsset]:
 logger = logging.getLogger(__name__)
 
 
+def _tradingview_window_open(measurement_time: datetime) -> bool:
+    """Retorna True se a janela de coleta do TradingView estiver aberta (BRT)."""
+    local_time = timezone.localtime(measurement_time)
+    if local_time.weekday() >= 5:
+        return False
+    if local_time.hour < 6 or local_time.hour >= 21:
+        return False
+    return True
+
+
 def execute_cycle(measurement_time: Optional[datetime] = None) -> None:
     """Executa coleta e persiste no banco."""
     try:
@@ -67,6 +77,44 @@ def execute_cycle(measurement_time: Optional[datetime] = None) -> None:
 
     for asset in assets:
         try:
+            if (
+                asset.source_key == SourceChoices.TRADINGVIEW
+                and not _tradingview_window_open(measurement_time)
+            ):
+                fallback = last_variations.get(asset.id)
+                variation_decimal = fallback["variation_decimal"] if fallback else None
+                variation_text = fallback["variation_text"] if fallback else None
+                market_phase = fallback["market_phase"] if fallback else ""
+
+                variations.append(
+                    MacroVariation(
+                        asset=asset,
+                        measurement_time=measurement_time,
+                        variation_text=variation_text,
+                        variation_decimal=variation_decimal,
+                        status="fallback" if fallback else "no_data",
+                        block_reason="tradingview_off_hours",
+                        source_excerpt="",
+                        market_phase=market_phase or "",
+                        payload_bytes=None,
+                    )
+                )
+
+                direction = 1 if asset.value_base >= 0 else -1
+                adjusted_variation = (variation_decimal or 0.0) * direction
+                variation_sum += adjusted_variation
+
+                threshold = abs(asset.value_base)
+                if variation_decimal is None:
+                    scores.append(0)
+                elif adjusted_variation >= threshold:
+                    scores.append(1)
+                elif adjusted_variation <= -threshold:
+                    scores.append(-1)
+                else:
+                    scores.append(0)
+                continue
+
             outcome = fetch_html(asset)
             payload_bytes = len(outcome.html.encode("utf-8")) if outcome.html else 0
             total_bytes += payload_bytes

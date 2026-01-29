@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from decimal import Decimal
 
 import environ
 from celery.schedules import crontab
@@ -22,6 +23,9 @@ env = environ.Env(
 ENV_FILE = BASE_DIR / ".env"
 if ENV_FILE.exists():
     environ.Env.read_env(str(ENV_FILE))
+
+LOG_DIR = Path(env("DJANGO_LOG_DIR", default=str(BASE_DIR / "logs")))
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 # --------------------------------------------------------------------------------------
 # Core settings
@@ -50,6 +54,7 @@ LOCAL_APPS: list[str] = [
     "accounts",
     "trades",
     "macro",
+    "payments",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -167,3 +172,49 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(minute="*/5"),  # 00,05,10...
     },
 }
+
+# --------------------------------------------------------------------------------------
+# Mercado Pago (pagamentos)
+# --------------------------------------------------------------------------------------
+MERCADOPAGO_ACCESS_TOKEN = env("MERCADOPAGO_ACCESS_TOKEN", default="")
+MERCADOPAGO_PUBLIC_KEY = env("MERCADOPAGO_PUBLIC_KEY", default="")
+MERCADOPAGO_CURRENCY = env("MERCADOPAGO_CURRENCY", default="BRL")
+MERCADOPAGO_BACK_URL = env("MERCADOPAGO_BACK_URL", default="")
+MERCADOPAGO_WEBHOOK_URL = env("MERCADOPAGO_WEBHOOK_URL", default="")
+MERCADOPAGO_TEST_PAYER_EMAIL = env("MERCADOPAGO_TEST_PAYER_EMAIL", default="")
+MERCADOPAGO_TRIAL_DAYS = env.int("MERCADOPAGO_TRIAL_DAYS", default=7)
+MERCADOPAGO_PLANS = {
+    "basic_monthly": {
+        "plan": "basic",
+        "label": "Basic Mensal",
+        "amount": Decimal(env("MERCADOPAGO_BASIC_MONTHLY_PRICE", default="79.90")),
+        "frequency": 1,
+        "frequency_type": "months",
+        "duration_days": 30,
+    },
+    "basic_annual": {
+        "plan": "basic",
+        "label": "Basic Anual",
+        "amount": Decimal(env("MERCADOPAGO_BASIC_ANNUAL_PRICE", default="359.88")),
+        "frequency": 12,
+        "frequency_type": "months",
+        "duration_days": 365,
+    },
+    "premium_monthly": {
+        "plan": "premium",
+        "label": "Premium Mensal",
+        "amount": Decimal(env("MERCADOPAGO_PREMIUM_MONTHLY_PRICE", default="129.90")),
+        "frequency": 1,
+        "frequency_type": "months",
+        "duration_days": 30,
+    },
+    "premium_annual": {
+        "plan": "premium",
+        "label": "Premium Anual",
+        "amount": Decimal(env("MERCADOPAGO_PREMIUM_ANNUAL_PRICE", default="719.88")),
+        "frequency": 12,
+        "frequency_type": "months",
+        "duration_days": 365,
+    },
+}
+MERCADOPAGO_USE_SANDBOX = env.bool("MERCADOPAGO_USE_SANDBOX", default=DEBUG)
