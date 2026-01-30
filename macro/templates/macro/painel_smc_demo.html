@@ -194,7 +194,7 @@
     needle.style.transform = `translateX(-50%) rotate(${deg}deg)`;
   }
 
-  async function fetchScores(limit = 60) {
+  async function fetchScores(limit = 40) {
     const res = await fetch(`/macro/scores/?limit=${limit}`);
     const json = await res.json();
     return json.results || [];
@@ -305,7 +305,7 @@
   }
 
   async function initPanel() {
-    const scores = await fetchScores(60);
+    const scores = await fetchScores(40);
     const variations = await fetchVariations(60);
     updateGauge(computeThermometer(scores));
     updateTickers(variations);

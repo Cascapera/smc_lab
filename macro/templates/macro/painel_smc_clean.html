@@ -198,8 +198,35 @@
       needle.style.transform = `translateX(-50%) rotate(${deg}deg)`;
     }
 
-    async function fetchScores(limit = 60) {
+    let updateTimer = null;
+
+    function stopUpdates(message) {
+      if (updateTimer) {
+        clearInterval(updateTimer);
+        updateTimer = null;
+      }
+      const bannerId = "auth-warning";
+      if (!document.getElementById(bannerId)) {
+        const banner = document.createElement("div");
+        banner.id = bannerId;
+        banner.textContent = message || "Sessão expirada. Faça login novamente.";
+        banner.style.cssText = "position:fixed;top:16px;left:50%;transform:translateX(-50%);background:#0b1220;border:1px solid #334155;color:#e2e8f0;padding:10px 14px;border-radius:10px;box-shadow:0 8px 20px rgba(0,0,0,.35);z-index:9999;font-size:13px;";
+        document.body.appendChild(banner);
+      }
+    }
+
+    function isAuthFailure(res) {
+      return res.status === 401 || res.status === 403;
+    }
+
+    async function fetchScores(limit = 40) {
       const res = await fetch(`/macro/scores/?limit=${limit}`);
+      if (!res.ok) {
+        if (isAuthFailure(res)) {
+          stopUpdates("Sessão encerrada. Atualizações pausadas.");
+        }
+        return [];
+      }
       const json = await res.json();
       const results = json.results || [];
       return results;
@@ -207,6 +234,12 @@
 
     async function fetchVariations(limit = 200) {
       const res = await fetch(`/macro/variations/?limit=${limit}`);
+      if (!res.ok) {
+        if (isAuthFailure(res)) {
+          stopUpdates("Sessão encerrada. Atualizações pausadas.");
+        }
+        return [];
+      }
       const json = await res.json();
       const results = json.results || [];
       return results;
@@ -331,7 +364,7 @@
     let flowChart = null;
 
     async function updatePanel() {
-      const scores = await fetchScores(60);
+      const scores = await fetchScores(40);
       const variations = await fetchVariations(200);
 
       const latest = (scores || [])[0] || null;
@@ -376,7 +409,7 @@
 
     document.addEventListener("DOMContentLoaded", async () => {
       await updatePanel();
-      setInterval(updatePanel, 60000);
+      updateTimer = setInterval(updatePanel, 60000);
     });
   </script>
 </body>

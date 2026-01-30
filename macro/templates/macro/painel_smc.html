@@ -195,7 +195,7 @@
     needle.style.transform = `translateX(-50%) rotate(${deg}deg)`;
   }
 
-  async function fetchScores(limit = 60) {
+  async function fetchScores(limit = 40) {
     const res = await fetch(`/macro/scores/?limit=${limit}`);
     const json = await res.json();
     const results = json.results || [];
