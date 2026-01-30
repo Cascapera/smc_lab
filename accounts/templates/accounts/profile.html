@@ -38,5 +38,22 @@
       <div><strong>Último reset:</strong> {% if profile.last_reset_at %}{{ profile.last_reset_at|date:"d/m/Y H:i" }}{% else %}N/D{% endif %}</div>
     </div>
   </div>
+
+  <div style="background:#0b1220;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:1rem;">
+    <h3 style="margin:0 0 8px;">Discord</h3>
+    <div style="color:#cbd5e1;font-size:14px;display:flex;flex-direction:column;gap:6px;">
+      {% if profile.discord_user_id %}
+        <div><strong>Conta:</strong> {{ profile.discord_username|default:profile.discord_user_id }}</div>
+        <div><strong>Conectado em:</strong> {{ profile.discord_connected_at|date:"d/m/Y H:i"|default:"N/D" }}</div>
+        <form method="post" action="{% url 'discord:unlink' %}">
+          {% csrf_token %}
+          <button class="btn" type="submit">Desvincular Discord</button>
+        </form>
+      {% else %}
+        <div>Conta Discord não conectada.</div>
+        <a class="btn btn-primary" href="{% url 'discord:login' %}">Conectar Discord</a>
+      {% endif %}
+    </div>
+  </div>
 </div>
 {% endblock %}

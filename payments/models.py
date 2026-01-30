@@ -31,7 +31,7 @@ class Payment(models.Model):
         on_delete=models.CASCADE,
         related_name="payments",
     )
-    plan = models.CharField("plano", max_length=10, choices=Plan.choices)
+    plan = models.CharField("plano", max_length=12, choices=Plan.choices)
     amount = models.DecimalField(
         "valor",
         max_digits=10,
@@ -68,7 +68,7 @@ class Subscription(models.Model):
         on_delete=models.CASCADE,
         related_name="subscriptions",
     )
-    plan = models.CharField("plano", max_length=10, choices=Plan.choices)
+    plan = models.CharField("plano", max_length=12, choices=Plan.choices)
     plan_key = models.CharField("plano chave", max_length=30)
     amount = models.DecimalField(
         "valor",

@@ -41,6 +41,7 @@ class Plan(models.TextChoices):
     FREE = "free", "Free"
     BASIC = "basic", "Basic"
     PREMIUM = "premium", "Premium"
+    PREMIUM_PLUS = "premium_plus", "Premium+"
 
 
 class Profile(models.Model):
@@ -114,7 +115,7 @@ class Profile(models.Model):
     )
     plan = models.CharField(
         "plano",
-        max_length=10,
+        max_length=12,
         choices=Plan.choices,
         default=Plan.FREE,
     )
@@ -126,6 +127,21 @@ class Profile(models.Model):
     )
     last_reset_at = models.DateTimeField(
         "último reset",
+        blank=True,
+        null=True,
+    )
+    discord_user_id = models.CharField(
+        "discord id",
+        max_length=30,
+        blank=True,
+    )
+    discord_username = models.CharField(
+        "discord usuário",
+        max_length=120,
+        blank=True,
+    )
+    discord_connected_at = models.DateTimeField(
+        "discord conectado em",
         blank=True,
         null=True,
     )
@@ -156,5 +172,10 @@ class Profile(models.Model):
         return self.plan
 
     def has_plan_at_least(self, required_plan: str) -> bool:
-        rank = {Plan.FREE: 0, Plan.BASIC: 1, Plan.PREMIUM: 2}
+        rank = {
+            Plan.FREE: 0,
+            Plan.BASIC: 1,
+            Plan.PREMIUM: 2,
+            Plan.PREMIUM_PLUS: 3,
+        }
         return rank[self.active_plan()] >= rank[required_plan]

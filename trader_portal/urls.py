@@ -29,6 +29,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("accounts/", include("accounts.urls")),
     path("pagamentos/", include("payments.urls", namespace="payments")),
+    path("discord/", include("discord_integration.urls", namespace="discord")),
     path("trades/", include("trades.urls")),
     path("macro/", include("macro.urls", namespace="macro")),
     path(

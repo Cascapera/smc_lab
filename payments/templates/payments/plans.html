@@ -108,6 +108,108 @@
     </div>
   </div>
 
+  <div style="margin-top:26px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+    <h2 style="margin:0;">Premium Plus</h2>
+    <span style="font-size:12px;background:#22d3ee;color:#03111A;padding:4px 10px;border-radius:999px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;">SALA AO VIVO</span>
+  </div>
+  <div style="margin-top:10px;padding:10px 12px;border-radius:10px;border:1px dashed rgba(34,211,238,.45);background:rgba(15,23,42,.6);color:#e2e8f0;font-size:13px;">
+    <strong>Sala ao Vivo (Discord)</strong> — Seg a sexta <strong>09:00–12:00</strong> | Ter e qui <strong>14:00–17:00</strong>
+  </div>
+
+  <div style="display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin-top:14px;">
+    <div style="background:#0b1220;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;display:flex;flex-direction:column;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <div style="display:flex;flex-direction:column;gap:2px;">
+          <h3 style="margin:0;">Premium Plus</h3>
+          <div style="font-size:18px;font-weight:700;">Mensal</div>
+        </div>
+        <span style="font-size:12px;color:#38bdf8;letter-spacing:.08em;text-transform:uppercase;">(assinatura)</span>
+      </div>
+      <div style="font-size:24px;font-weight:800;margin-top:8px;">
+        {{ plans.premium_plus_monthly.amount }} {{ currency }}
+        <span style="font-size:13px;color:#cbd5e1;font-weight:600;">/ mês</span>
+      </div>
+      <div style="font-size:14px;font-weight:800;color:#22d3ee;margin-top:6px;">SALA AO VIVO</div>
+      <ul style="margin:10px 0 0;padding-left:18px;color:#cbd5e1;font-size:14px;display:grid;gap:6px;">
+        <li>Acesso a SALA AO VIVO.</li>
+        <li>Acesso ao Painel SMC.</li>
+        <li>Registro de operações.</li>
+        <li>Acesso ao Dashboard Avançado.</li>
+        <li>Analytics com IA (em breve)</li>
+      </ul>
+      <a class="btn btn-primary" href="{% url 'payments:checkout' 'premium_plus_monthly' %}" style="margin-top:auto;">Assinar Premium Plus Mensal</a>
+    </div>
+
+    <div style="background:#0b1220;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;display:flex;flex-direction:column;position:relative;overflow:hidden;">
+      <div style="position:absolute;top:2px;right:-98px;transform:rotate(22deg);background:linear-gradient(135deg,#22d3ee,#3b82f6);color:#03111A;font-weight:800;font-size:17.6px;padding:10.6px 85px 10.6px 130px;letter-spacing:.08em;text-transform:uppercase;text-align:right;">-20% OFF</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <div style="display:flex;flex-direction:column;gap:2px;">
+          <h3 style="margin:0;">Premium Plus</h3>
+          <div style="font-size:18px;font-weight:700;">Trimestral</div>
+        </div>
+      </div>
+      <div style="font-size:24px;font-weight:800;margin-top:8px;display:flex;align-items:baseline;gap:10px;">
+        <span>{{ plans.premium_plus_quarterly.amount }} {{ currency }}</span>
+        <span style="font-size:12px;color:#94a3b8;letter-spacing:.08em;text-transform:uppercase;">Até 12x</span>
+      </div>
+      <div style="font-size:14px;font-weight:800;color:#22d3ee;margin-top:6px;">SALA AO VIVO</div>
+      <ul style="margin:10px 0 0;padding-left:18px;color:#cbd5e1;font-size:14px;display:grid;gap:6px;">
+        <li>Acesso a SALA AO VIVO.</li>
+        <li>Acesso ao Painel SMC.</li>
+        <li>Registro de operações.</li>
+        <li>Acesso ao Dashboard Avançado.</li>
+        <li>Analytics com IA (em breve)</li>
+      </ul>
+      <a class="btn btn-primary" href="{% url 'payments:checkout' 'premium_plus_quarterly' %}" style="margin-top:auto;">Assinar Premium Plus Trimestral</a>
+    </div>
+
+    <div style="background:#0b1220;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;display:flex;flex-direction:column;position:relative;overflow:hidden;">
+      <div style="position:absolute;top:2px;right:-98px;transform:rotate(22deg);background:linear-gradient(135deg,#22d3ee,#3b82f6);color:#03111A;font-weight:800;font-size:17.6px;padding:10.6px 85px 10.6px 130px;letter-spacing:.08em;text-transform:uppercase;text-align:right;">-33% OFF</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <div style="display:flex;flex-direction:column;gap:2px;">
+          <h3 style="margin:0;">Premium Plus</h3>
+          <div style="font-size:18px;font-weight:700;">Semestral</div>
+        </div>
+      </div>
+      <div style="font-size:24px;font-weight:800;margin-top:8px;display:flex;align-items:baseline;gap:10px;">
+        <span>{{ plans.premium_plus_semiannual.amount }} {{ currency }}</span>
+        <span style="font-size:12px;color:#94a3b8;letter-spacing:.08em;text-transform:uppercase;">Até 12x</span>
+      </div>
+      <div style="font-size:14px;font-weight:800;color:#22d3ee;margin-top:6px;">SALA AO VIVO</div>
+      <ul style="margin:10px 0 0;padding-left:18px;color:#cbd5e1;font-size:14px;display:grid;gap:6px;">
+        <li>Acesso a SALA AO VIVO.</li>
+        <li>Acesso ao Painel SMC.</li>
+        <li>Registro de operações.</li>
+        <li>Acesso ao Dashboard Avançado.</li>
+        <li>Analytics com IA (em breve)</li>
+      </ul>
+      <a class="btn btn-primary" href="{% url 'payments:checkout' 'premium_plus_semiannual' %}" style="margin-top:auto;">Assinar Premium Plus Semestral</a>
+    </div>
+
+    <div style="background:#0b1220;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;display:flex;flex-direction:column;position:relative;overflow:hidden;">
+      <div style="position:absolute;top:2px;right:-98px;transform:rotate(22deg);background:linear-gradient(135deg,#22d3ee,#3b82f6);color:#03111A;font-weight:800;font-size:17.6px;padding:10.6px 85px 10.6px 130px;letter-spacing:.08em;text-transform:uppercase;text-align:right;">-40% OFF</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <div style="display:flex;flex-direction:column;gap:2px;">
+          <h3 style="margin:0;">Premium Plus</h3>
+          <div style="font-size:18px;font-weight:700;">Anual</div>
+        </div>
+      </div>
+      <div style="font-size:24px;font-weight:800;margin-top:8px;display:flex;align-items:baseline;gap:10px;">
+        <span>{{ plans.premium_plus_annual.amount }} {{ currency }}</span>
+        <span style="font-size:12px;color:#94a3b8;letter-spacing:.08em;text-transform:uppercase;">Até 12x</span>
+      </div>
+      <div style="font-size:14px;font-weight:800;color:#22d3ee;margin-top:6px;">SALA AO VIVO</div>
+      <ul style="margin:10px 0 0;padding-left:18px;color:#cbd5e1;font-size:14px;display:grid;gap:6px;">
+        <li>Acesso a SALA AO VIVO.</li>
+        <li>Acesso ao Painel SMC.</li>
+        <li>Registro de operações.</li>
+        <li>Acesso ao Dashboard Avançado.</li>
+        <li>Analytics com IA (em breve)</li>
+      </ul>
+      <a class="btn btn-primary" href="{% url 'payments:checkout' 'premium_plus_annual' %}" style="margin-top:auto;">Assinar Premium Plus Anual</a>
+    </div>
+  </div>
+
   <script>
     const billingButtons = document.querySelectorAll("[data-billing-toggle]");
     const billingCards = document.querySelectorAll("[data-billing]");

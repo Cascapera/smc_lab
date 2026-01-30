@@ -55,6 +55,7 @@ LOCAL_APPS: list[str] = [
     "trades",
     "macro",
     "payments",
+    "discord_integration",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -171,6 +172,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "macro.tasks.collect_macro_cycle",
         "schedule": crontab(minute="*/5"),  # 00,05,10...
     },
+    "discord-sync-daily": {
+        "task": "discord_integration.tasks.sync_all_discord_roles",
+        "schedule": crontab(minute=0, hour=4),
+    },
 }
 
 # --------------------------------------------------------------------------------------
@@ -183,6 +188,18 @@ MERCADOPAGO_BACK_URL = env("MERCADOPAGO_BACK_URL", default="")
 MERCADOPAGO_WEBHOOK_URL = env("MERCADOPAGO_WEBHOOK_URL", default="")
 MERCADOPAGO_TEST_PAYER_EMAIL = env("MERCADOPAGO_TEST_PAYER_EMAIL", default="")
 MERCADOPAGO_TRIAL_DAYS = env.int("MERCADOPAGO_TRIAL_DAYS", default=7)
+MERCADOPAGO_PREMIUM_PLUS_MONTHLY_PRICE = env(
+    "MERCADOPAGO_PREMIUM_PLUS_MONTHLY_PRICE", default="250.00"
+)
+MERCADOPAGO_PREMIUM_PLUS_QUARTERLY_PRICE = env(
+    "MERCADOPAGO_PREMIUM_PLUS_QUARTERLY_PRICE", default="600.00"
+)
+MERCADOPAGO_PREMIUM_PLUS_SEMIANNUAL_PRICE = env(
+    "MERCADOPAGO_PREMIUM_PLUS_SEMIANNUAL_PRICE", default="1000.00"
+)
+MERCADOPAGO_PREMIUM_PLUS_ANNUAL_PRICE = env(
+    "MERCADOPAGO_PREMIUM_PLUS_ANNUAL_PRICE", default="1800.00"
+)
 MERCADOPAGO_PLANS = {
     "basic_monthly": {
         "plan": "basic",
@@ -191,6 +208,7 @@ MERCADOPAGO_PLANS = {
         "frequency": 1,
         "frequency_type": "months",
         "duration_days": 30,
+        "billing_type": "subscription",
     },
     "basic_annual": {
         "plan": "basic",
@@ -199,6 +217,7 @@ MERCADOPAGO_PLANS = {
         "frequency": 12,
         "frequency_type": "months",
         "duration_days": 365,
+        "billing_type": "one_time",
     },
     "premium_monthly": {
         "plan": "premium",
@@ -207,6 +226,7 @@ MERCADOPAGO_PLANS = {
         "frequency": 1,
         "frequency_type": "months",
         "duration_days": 30,
+        "billing_type": "subscription",
     },
     "premium_annual": {
         "plan": "premium",
@@ -215,6 +235,55 @@ MERCADOPAGO_PLANS = {
         "frequency": 12,
         "frequency_type": "months",
         "duration_days": 365,
+        "billing_type": "one_time",
+    },
+    "premium_plus_monthly": {
+        "plan": "premium_plus",
+        "label": "Premium Plus Mensal",
+        "amount": Decimal(env("MERCADOPAGO_PREMIUM_PLUS_MONTHLY_PRICE", default="250.00")),
+        "frequency": 1,
+        "frequency_type": "months",
+        "duration_days": 30,
+        "billing_type": "subscription",
+    },
+    "premium_plus_quarterly": {
+        "plan": "premium_plus",
+        "label": "Premium Plus Trimestral",
+        "amount": Decimal(env("MERCADOPAGO_PREMIUM_PLUS_QUARTERLY_PRICE", default="600.00")),
+        "frequency": 3,
+        "frequency_type": "months",
+        "duration_days": 90,
+        "billing_type": "one_time",
+    },
+    "premium_plus_semiannual": {
+        "plan": "premium_plus",
+        "label": "Premium Plus Semestral",
+        "amount": Decimal(env("MERCADOPAGO_PREMIUM_PLUS_SEMIANNUAL_PRICE", default="1000.00")),
+        "frequency": 6,
+        "frequency_type": "months",
+        "duration_days": 180,
+        "billing_type": "one_time",
+    },
+    "premium_plus_annual": {
+        "plan": "premium_plus",
+        "label": "Premium Plus Anual",
+        "amount": Decimal(env("MERCADOPAGO_PREMIUM_PLUS_ANNUAL_PRICE", default="1800.00")),
+        "frequency": 12,
+        "frequency_type": "months",
+        "duration_days": 365,
+        "billing_type": "one_time",
     },
 }
 MERCADOPAGO_USE_SANDBOX = env.bool("MERCADOPAGO_USE_SANDBOX", default=DEBUG)
+
+# --------------------------------------------------------------------------------------
+# Discord
+# --------------------------------------------------------------------------------------
+DISCORD_CLIENT_ID = env("DISCORD_CLIENT_ID", default="")
+DISCORD_CLIENT_SECRET = env("DISCORD_CLIENT_SECRET", default="")
+DISCORD_REDIRECT_URI = env("DISCORD_REDIRECT_URI", default="")
+DISCORD_BOT_TOKEN = env("DISCORD_BOT_TOKEN", default="")
+DISCORD_GUILD_ID = env("DISCORD_GUILD_ID", default="")
+DISCORD_ROLE_BASIC_ID = env("DISCORD_ROLE_BASIC_ID", default="")
+DISCORD_ROLE_PREMIUM_ID = env("DISCORD_ROLE_PREMIUM_ID", default="")
+DISCORD_ROLE_PREMIUM_PLUS_ID = env("DISCORD_ROLE_PREMIUM_PLUS_ID", default="")

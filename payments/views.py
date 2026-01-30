@@ -79,7 +79,8 @@ class CreateCheckoutView(LoginRequiredMixin, View):
         if settings.MERCADOPAGO_USE_SANDBOX and settings.MERCADOPAGO_TEST_PAYER_EMAIL:
             payer_email = settings.MERCADOPAGO_TEST_PAYER_EMAIL
 
-        if plan_key.endswith("annual"):
+        billing_type = config.get("billing_type", "subscription")
+        if billing_type == "one_time":
             preference_payload = {
                 "items": [
                     {
@@ -344,6 +345,12 @@ def _apply_plan(profile: Profile, plan_key: str, plan: str) -> None:
     profile.plan = plan
     profile.plan_expires_at = start_at + timedelta(days=_get_plan_duration(plan_key))
     profile.save(update_fields=["plan", "plan_expires_at"])
+    try:
+        from discord_integration.tasks import sync_user_roles
+
+        sync_user_roles.delay(profile.user_id)
+    except Exception:
+        pass
 
 
 def _get_plan_duration(plan_key: str) -> int:
@@ -362,6 +369,12 @@ def _maybe_revoke_plan(profile: Profile) -> None:
     profile.plan = "free"
     profile.plan_expires_at = None
     profile.save(update_fields=["plan", "plan_expires_at"])
+    try:
+        from discord_integration.tasks import sync_user_roles
+
+        sync_user_roles.delay(profile.user_id)
+    except Exception:
+        pass
 
 
 def _schedule_plan_end(
