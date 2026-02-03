@@ -28,3 +28,4 @@ def logout_other_sessions(sender, request, user: User, **kwargs) -> None:
         data = session.get_decoded()
         if data.get("_auth_user_id") == str(user.id) and session.session_key != current_key:
             session.delete()
+

@@ -3,6 +3,7 @@ from __future__ import annotations
 from django.contrib import messages
 from django.contrib.auth import logout
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
 from django.utils import timezone
@@ -82,3 +83,15 @@ class ProfileView(LoginRequiredMixin, TemplateView):
         context["user_obj"] = self.request.user
         context["profile"] = getattr(self.request.user, "profile", None)
         return context
+
+
+class SessionStatusView(View):
+    def get(self, request):
+        if not request.user.is_authenticated:
+            return JsonResponse({"detail": "unauthorized"}, status=401)
+        last_login = request.user.last_login
+        return JsonResponse(
+            {
+                "last_login": last_login.isoformat() if last_login else None,
+            }
+        )

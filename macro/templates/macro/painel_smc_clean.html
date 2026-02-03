@@ -407,9 +407,29 @@
       setTicker("dxy-value", findTicker(["dxy", "dollar index", "índice dólar", "indice dolar"]));
     }
 
+    const sessionCheckUrl = "/accounts/session-status/";
+    const initialLogin = "{{ request.user.last_login|date:'c' }}";
+
+    async function checkSessionStatus() {
+      try {
+        const res = await fetch(sessionCheckUrl, { cache: "no-store" });
+        if (!res.ok) {
+          stopUpdates("Sessão encerrada. Atualizações pausadas.");
+          return;
+        }
+        const data = await res.json();
+        if (initialLogin && data.last_login && data.last_login !== initialLogin) {
+          stopUpdates("Sessão encerrada por novo login. Atualizações pausadas.");
+        }
+      } catch {
+        // ignora falhas temporárias
+      }
+    }
+
     document.addEventListener("DOMContentLoaded", async () => {
       await updatePanel();
       updateTimer = setInterval(updatePanel, 60000);
+      setInterval(checkSessionStatus, 30000);
     });
   </script>
 </body>
