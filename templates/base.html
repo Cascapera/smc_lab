@@ -217,7 +217,7 @@
     <script>
         const sessionCheckUrl = "{% url 'accounts:session_status' %}";
         const loginUrl = "{% url 'accounts:login' %}";
-        const initialLogin = "{{ request.user.last_login|date:'c' }}";
+        const initialLoginTs = {{ request.user.last_login|date:"U"|default:"null" }};
 
         async function checkSessionStatus() {
             try {
@@ -228,7 +228,11 @@
                     return;
                 }
                 const data = await res.json();
-                if (initialLogin && data.last_login && data.last_login !== initialLogin) {
+                if (
+                    initialLoginTs &&
+                    data.last_login_ts &&
+                    Number(data.last_login_ts) !== Number(initialLoginTs)
+                ) {
                     const next = encodeURIComponent(window.location.pathname + window.location.search);
                     window.location.href = `${loginUrl}?next=${next}`;
                 }

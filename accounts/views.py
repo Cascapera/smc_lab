@@ -93,5 +93,6 @@ class SessionStatusView(View):
         return JsonResponse(
             {
                 "last_login": last_login.isoformat() if last_login else None,
+                "last_login_ts": int(last_login.timestamp()) if last_login else None,
             }
         )
