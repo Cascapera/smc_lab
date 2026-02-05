@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 from typing import Any
@@ -81,11 +82,27 @@ def _bot_headers() -> dict[str, str]:
     config = get_config()
     return {"Authorization": f"Bot {config.bot_token}"}
 
+def _bot_request(method: str, url: str, **kwargs: Any) -> requests.Response:
+    resp = requests.request(method, url, headers=_bot_headers(), timeout=20, **kwargs)
+    if resp.status_code == 429:
+        retry_after = None
+        try:
+            payload = resp.json()
+            retry_after = payload.get("retry_after")
+        except json.JSONDecodeError:
+            retry_after = None
+        logger.warning(
+            "[discord] Rate limit (%s). Retry after: %s",
+            resp.status_code,
+            retry_after,
+        )
+    return resp
+
 
 def add_role(discord_user_id: str, role_id: str) -> None:
     config = get_config()
     url = f"{DISCORD_API_BASE}/guilds/{config.guild_id}/members/{discord_user_id}/roles/{role_id}"
-    resp = requests.put(url, headers=_bot_headers(), timeout=20)
+    resp = _bot_request("PUT", url)
     if not resp.ok:
         logger.warning("[discord] Falha ao adicionar role %s: %s", role_id, resp.text)
 
@@ -93,7 +110,7 @@ def add_role(discord_user_id: str, role_id: str) -> None:
 def remove_role(discord_user_id: str, role_id: str) -> None:
     config = get_config()
     url = f"{DISCORD_API_BASE}/guilds/{config.guild_id}/members/{discord_user_id}/roles/{role_id}"
-    resp = requests.delete(url, headers=_bot_headers(), timeout=20)
+    resp = _bot_request("DELETE", url)
     if not resp.ok and resp.status_code != 404:
         logger.warning("[discord] Falha ao remover role %s: %s", role_id, resp.text)
 
@@ -109,20 +126,37 @@ def desired_role_for_plan(plan: str) -> str | None:
     return None
 
 
+def fetch_member_roles(discord_user_id: str) -> list[str] | None:
+    config = get_config()
+    url = f"{DISCORD_API_BASE}/guilds/{config.guild_id}/members/{discord_user_id}"
+    resp = _bot_request("GET", url)
+    if resp.status_code == 404:
+        logger.warning("[discord] Usuário não está no servidor: %s", discord_user_id)
+        return None
+    if not resp.ok:
+        logger.warning("[discord] Falha ao buscar roles do usuário: %s", resp.text)
+        return None
+    data = resp.json()
+    return data.get("roles", [])
+
+
 def remove_all_roles(discord_user_id: str) -> None:
     config = get_config()
-    for role_id in [
-        config.role_basic_id,
-        config.role_premium_id,
-        config.role_premium_plus_id,
-    ]:
-        if role_id:
+    current_roles = fetch_member_roles(discord_user_id)
+    if current_roles is None:
+        return
+    for role_id in [config.role_basic_id, config.role_premium_id, config.role_premium_plus_id]:
+        if role_id and role_id in current_roles:
             remove_role(discord_user_id, role_id)
 
 
 def sync_profile_roles(profile: Profile) -> None:
     """Sincroniza roles de acordo com o plano."""
     if not profile.discord_user_id:
+        return
+
+    current_roles = fetch_member_roles(profile.discord_user_id)
+    if current_roles is None:
         return
 
     desired_role = desired_role_for_plan(profile.active_plan())
@@ -137,6 +171,8 @@ def sync_profile_roles(profile: Profile) -> None:
         if not role_id:
             continue
         if desired_role == role_id:
-            add_role(profile.discord_user_id, role_id)
+            if role_id not in current_roles:
+                add_role(profile.discord_user_id, role_id)
         else:
-            remove_role(profile.discord_user_id, role_id)
+            if role_id in current_roles:
+                remove_role(profile.discord_user_id, role_id)
