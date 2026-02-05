@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
+import time
+from collections import deque
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlencode
@@ -15,6 +18,30 @@ logger = logging.getLogger(__name__)
 
 
 DISCORD_API_BASE = "https://discord.com/api"
+
+
+class RateLimiter:
+    def __init__(self, max_calls: int, period_seconds: float) -> None:
+        self.max_calls = max_calls
+        self.period_seconds = period_seconds
+        self._calls: deque[float] = deque()
+        self._lock = threading.Lock()
+
+    def wait(self) -> None:
+        while True:
+            with self._lock:
+                now = time.monotonic()
+                while self._calls and now - self._calls[0] >= self.period_seconds:
+                    self._calls.popleft()
+                if len(self._calls) < self.max_calls:
+                    self._calls.append(now)
+                    return
+                sleep_for = self.period_seconds - (now - self._calls[0])
+            if sleep_for > 0:
+                time.sleep(sleep_for)
+
+
+_discord_rate_limiter = RateLimiter(max_calls=30, period_seconds=1.0)
 
 
 @dataclass
@@ -83,6 +110,7 @@ def _bot_headers() -> dict[str, str]:
     return {"Authorization": f"Bot {config.bot_token}"}
 
 def _bot_request(method: str, url: str, **kwargs: Any) -> requests.Response:
+    _discord_rate_limiter.wait()
     resp = requests.request(method, url, headers=_bot_headers(), timeout=20, **kwargs)
     if resp.status_code == 429:
         retry_after = None
