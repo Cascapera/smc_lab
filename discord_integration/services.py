@@ -41,7 +41,7 @@ class RateLimiter:
                 time.sleep(sleep_for)
 
 
-_discord_rate_limiter = RateLimiter(max_calls=30, period_seconds=1.0)
+_discord_rate_limiter = RateLimiter(max_calls=10, period_seconds=1.0)
 
 
 @dataclass
@@ -110,21 +110,18 @@ def _bot_headers() -> dict[str, str]:
     return {"Authorization": f"Bot {config.bot_token}"}
 
 def _bot_request(method: str, url: str, **kwargs: Any) -> requests.Response:
-    _discord_rate_limiter.wait()
-    resp = requests.request(method, url, headers=_bot_headers(), timeout=20, **kwargs)
-    if resp.status_code == 429:
-        retry_after = None
+    while True:
+        _discord_rate_limiter.wait()
+        resp = requests.request(method, url, headers=_bot_headers(), timeout=20, **kwargs)
+        if resp.status_code != 429:
+            return resp
         try:
             payload = resp.json()
-            retry_after = payload.get("retry_after")
-        except json.JSONDecodeError:
-            retry_after = None
-        logger.warning(
-            "[discord] Rate limit (%s). Retry after: %s",
-            resp.status_code,
-            retry_after,
-        )
-    return resp
+            retry_after = float(payload.get("retry_after", 1)) + 0.5
+        except (ValueError, TypeError, json.JSONDecodeError):
+            retry_after = 5
+        logger.warning("[discord] Rate limit 429. Retry after: %s", retry_after)
+        time.sleep(retry_after)
 
 
 def add_role(discord_user_id: str, role_id: str) -> None:
