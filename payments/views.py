@@ -117,6 +117,14 @@ class CreateCheckoutView(LoginRequiredMixin, View):
             customer_type = "company" if len(document) > 11 else "individual"
 
             boleto_due_at = (timezone.now() + timedelta(days=settings.PAGARME_BOLETO_DAYS)).isoformat()
+            cart_items = [
+                {
+                    "amount": int(amount * 100),
+                    "description": config["label"],
+                    "quantity": 1,
+                    "code": plan_key,
+                }
+            ]
             link_payload = {
                 "type": "order",
                 "name": config["label"],
@@ -126,14 +134,7 @@ class CreateCheckoutView(LoginRequiredMixin, View):
                     "type": customer_type,
                     "document": document,
                 },
-                "items": [
-                    {
-                        "amount": int(amount * 100),
-                        "description": config["label"],
-                        "quantity": 1,
-                        "code": plan_key,
-                    }
-                ],
+                "cart_settings": {"items": cart_items},
                 "metadata": {
                     "user_id": request.user.id,
                     "plan": plan_name,
@@ -142,6 +143,7 @@ class CreateCheckoutView(LoginRequiredMixin, View):
                 },
                 "payment_settings": {
                     "accepted_payment_methods": ["credit_card", "pix", "boleto"],
+                    "credit_card": {"installments": [1]},
                     "pix": {"expires_in": settings.PAGARME_PIX_EXPIRES_IN},
                     "boleto": {
                         "due_at": boleto_due_at,
