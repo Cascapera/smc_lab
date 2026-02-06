@@ -4,6 +4,7 @@
 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:1rem;">
   <h1 style="margin:0;">Perfil</h1>
   <span style="color:#cbd5e1;font-size:13px;">Suas informações de conta</span>
+  <a class="btn btn-primary" href="{% url 'accounts:profile_edit' %}">Editar perfil</a>
 </div>
 
 <div style="display:grid;gap:1rem;grid-template-columns: repeat(auto-fit,minmax(260px,1fr));">
@@ -31,6 +32,19 @@
       <div><strong>País:</strong> {{ profile.country|default:"N/D" }}</div>
       <div><strong>Estado:</strong> {{ profile.state|default:"N/D" }}</div>
       <div><strong>Cidade:</strong> {{ profile.city|default:"N/D" }}</div>
+      <div><strong>CEP:</strong> {{ profile.zipcode|default:"N/D" }}</div>
+    </div>
+  </div>
+
+  <div style="background:#0b1220;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:1rem;">
+    <h3 style="margin:0 0 8px;">Documentação</h3>
+    <div style="color:#cbd5e1;font-size:14px;display:flex;flex-direction:column;gap:4px;">
+      <div><strong>CPF/CNPJ:</strong> {{ profile.document_id|default:"N/D" }}</div>
+      <div><strong>Endereço:</strong> {{ profile.address_line1|default:"N/D" }}</div>
+      <div><strong>Complemento:</strong> {{ profile.address_line2|default:"N/D" }}</div>
+      {% if not profile.document_id %}
+        <div style="color:#fbbf24;">CPF/CNPJ é obrigatório para pagamentos via Pagar.me.</div>
+      {% endif %}
     </div>
   </div>
 

@@ -10,7 +10,7 @@ from django.utils import timezone
 from django.views import View
 from django.views.generic import TemplateView
 
-from .forms import ProfileForm, UserRegistrationForm
+from .forms import ProfileEditForm, ProfileForm, UserRegistrationForm
 
 
 class RegisterView(View):
@@ -83,6 +83,25 @@ class ProfileView(LoginRequiredMixin, TemplateView):
         context["user_obj"] = self.request.user
         context["profile"] = getattr(self.request.user, "profile", None)
         return context
+
+
+class ProfileEditView(LoginRequiredMixin, View):
+    template_name = "accounts/profile_edit.html"
+
+    def get(self, request):
+        profile = getattr(request.user, "profile", None)
+        form = ProfileEditForm(instance=profile)
+        return render(request, self.template_name, {"form": form})
+
+    def post(self, request):
+        profile = getattr(request.user, "profile", None)
+        form = ProfileEditForm(request.POST, instance=profile)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Perfil atualizado com sucesso!")
+            return redirect("accounts:profile")
+        messages.error(request, "Por favor, corrija os erros abaixo.")
+        return render(request, self.template_name, {"form": form})
 
 
 class SessionStatusView(View):

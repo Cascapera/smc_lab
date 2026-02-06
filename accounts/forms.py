@@ -88,3 +88,33 @@ class ProfileForm(forms.ModelForm):
     def clean_timezone(self) -> str:
         # Garante um valor padrão caso o campo esteja oculto
         return self.cleaned_data.get("timezone") or "America/Sao_Paulo"
+
+
+class ProfileEditForm(forms.ModelForm):
+    class Meta:
+        model = Profile
+        exclude = (
+            "user",
+            "terms_accepted",
+            "privacy_accepted",
+            "terms_accepted_at",
+            "privacy_accepted_at",
+            "plan",
+            "plan_expires_at",
+            "last_reset_at",
+            "created_at",
+            "updated_at",
+        )
+        widgets = {
+            "phone": forms.TextInput(attrs={"placeholder": "(11) 99999-9999"}),
+            "country": forms.TextInput(attrs={"placeholder": "Brasil"}),
+            "zipcode": forms.TextInput(attrs={"placeholder": "00000-000"}),
+            "timezone": forms.HiddenInput(),
+        }
+
+    def clean_country(self) -> str:
+        country = self.cleaned_data.get("country", "")
+        return country.upper()
+
+    def clean_timezone(self) -> str:
+        return self.cleaned_data.get("timezone") or "America/Sao_Paulo"

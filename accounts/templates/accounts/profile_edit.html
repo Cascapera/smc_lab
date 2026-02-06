@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+  :root{
+    --muted: rgba(255,255,255,.72);
+    --line: rgba(255,255,255,.10);
+    --text: rgba(255,255,255,.92);
+    --max: 1080px;
+  }
+  .wrap{
+    width:min(var(--max), 100%);
+    margin: 0 auto;
+    padding: 10px 0 30px;
+  }
+  .card{
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.10);
+    border-radius: 18px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.45);
+    overflow:hidden;
+  }
+  .card-head{
+    padding: 24px 26px;
+    border-bottom: 1px solid var(--line);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap: 10px;
+    flex-wrap:wrap;
+  }
+  .title{
+    margin:0;
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing:.04em;
+  }
+  .subtitle{
+    margin: 6px 0 0;
+    color: var(--muted);
+    font-size: 14px;
+    letter-spacing:.01em;
+  }
+  .content{
+    padding: 26px;
+  }
+  form{
+    margin:0;
+  }
+  .grid{
+    display:grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px 20px;
+    justify-items: flex-start;
+  }
+  .field{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+  label{
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing:.02em;
+    color: var(--text);
+  }
+  input, select, textarea{
+    width:100%;
+    max-width: 320px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.14);
+    background: rgba(0,0,0,.20);
+    color: var(--text);
+    font-size: 14px;
+  }
+  select option{
+    background: #0f172a;
+    color: #e2e8f0;
+  }
+  textarea{ min-height: 80px; }
+  small{ color: var(--muted); }
+  .errors{ color:#f87171; font-size:13px; margin: 4px 0 0; }
+  .actions-bottom{
+    margin-top: 18px;
+    display:flex;
+    gap:12px;
+    align-items:center;
+    flex-wrap:wrap;
+  }
+  .btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.16);
+    background: rgba(255,255,255,.06);
+    color: var(--text);
+    font-weight: 700;
+    letter-spacing:.05em;
+    text-decoration:none;
+    font-size: 12px;
+  }
+  .btn-primary{
+    border-color: rgba(34,211,238,.35);
+    background: linear-gradient(180deg, rgba(59,130,246,.95), rgba(34,211,238,.80));
+    color: #03111A;
+    box-shadow: 0 18px 40px rgba(34,211,238,.18);
+  }
+  .note{ color: var(--muted); font-size: 13px; }
+  .checkboxes{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px 12px;
+    margin-top:12px;
+    align-items:center;
+  }
+  .checkboxes label{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    font-weight:600;
+    margin:0;
+  }
+  .checkboxes input[type="checkbox"]{
+    width:auto;
+    max-width:none;
+  }
+  @media (max-width: 900px){
+    .grid{ grid-template-columns: 1fr; }
+  }
+</style>
+
+<div class="wrap">
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h1 class="title">Editar perfil</h1>
+        <p class="subtitle">Atualize seus dados de contato e documentação.</p>
+      </div>
+      <a class="btn" href="{% url 'accounts:profile' %}">Voltar</a>
+    </div>
+    <div class="content">
+      <form method="post" novalidate>
+        {% csrf_token %}
+        {{ form.timezone }}
+        {{ form.non_field_errors }}
+
+        <div class="grid">
+          {% for field in form %}
+            {% if field.name == "email_opt_in" or field.name == "timezone" %}
+              {# renderiza depois #}
+            {% else %}
+              <div class="field">
+                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}
+                {% for error in field.errors %}<div class="errors">{{ error }}</div>{% endfor %}
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+
+        <div class="checkboxes">
+          <label for="{{ form.email_opt_in.id_for_label }}">
+            {{ form.email_opt_in }}
+            <span>{{ form.email_opt_in.label }}</span>
+          </label>
+          {% for error in form.email_opt_in.errors %}<div class="errors">{{ error }}</div>{% endfor %}
+        </div>
+
+        <div class="actions-bottom">
+          <button class="btn btn-primary" type="submit">Salvar alterações</button>
+          <span class="note">Campos salvos imediatamente no seu perfil.</span>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -139,6 +139,16 @@ class CreateCheckoutView(LoginRequiredMixin, View):
                         "code": plan_key,
                     }
                 ],
+                "payments": [
+                    {
+                        "payment_method": "checkout",
+                        "checkout": {
+                            "accepted_payment_methods": ["credit_card", "pix", "boleto"],
+                            "success_url": pagarme_success_url,
+                            "failure_url": pagarme_failure_url,
+                        },
+                    }
+                ],
                 "customer": customer_payload,
                 "metadata": {
                     "user_id": request.user.id,
@@ -147,11 +157,6 @@ class CreateCheckoutView(LoginRequiredMixin, View):
                     "external_reference": external_reference,
                 },
                 "code": external_reference,
-                "checkout": {
-                    "accepted_payment_methods": ["credit_card", "pix", "boleto"],
-                    "success_url": pagarme_success_url,
-                    "failure_url": pagarme_failure_url,
-                },
             }
 
             try:
