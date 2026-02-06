@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import datetime, timedelta
 
@@ -33,6 +34,8 @@ from .services.pagarme import (
     parse_webhook_payload,
     verify_webhook_signature,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class PlanListView(LoginRequiredMixin, TemplateView):
@@ -175,8 +178,34 @@ class CreateCheckoutView(LoginRequiredMixin, View):
                 order.get("checkout_url")
                 or order.get("payment_url")
                 or order.get("url")
+                or (order.get("checkout") or {}).get("url")
             )
             if not checkout_url:
+                for charge in order.get("charges", []) or []:
+                    checkout_url = (
+                        charge.get("checkout_url")
+                        or charge.get("payment_url")
+                        or charge.get("url")
+                        or (charge.get("checkout") or {}).get("url")
+                    )
+                    if checkout_url:
+                        break
+                    transaction = charge.get("last_transaction") or {}
+                    checkout_url = (
+                        transaction.get("checkout_url")
+                        or transaction.get("payment_url")
+                        or transaction.get("url")
+                        or (transaction.get("checkout") or {}).get("url")
+                    )
+                    if checkout_url:
+                        break
+            if not checkout_url:
+                logger.warning(
+                    "[pagarme] Checkout sem URL (order_id=%s, keys=%s, charges=%s).",
+                    order.get("id"),
+                    sorted(order.keys()),
+                    len(order.get("charges") or []),
+                )
                 messages.error(request, "Checkout do Pagar.me não retornou URL.")
                 return redirect(reverse("payments:plans"))
 
