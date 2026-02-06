@@ -254,7 +254,6 @@ MERCADOPAGO_PLANS = {
         "frequency_type": "months",
         "duration_days": 90,
         "billing_type": "one_time",
-        "provider": "pagarme",
     },
     "premium_plus_semiannual": {
         "plan": "premium_plus",
@@ -264,7 +263,6 @@ MERCADOPAGO_PLANS = {
         "frequency_type": "months",
         "duration_days": 180,
         "billing_type": "one_time",
-        "provider": "pagarme",
     },
     "premium_plus_annual": {
         "plan": "premium_plus",
@@ -274,41 +272,9 @@ MERCADOPAGO_PLANS = {
         "frequency_type": "months",
         "duration_days": 365,
         "billing_type": "one_time",
-        "provider": "pagarme",
-    },
-    "premium_plus_test": {
-        "plan": "premium_plus",
-        "label": "Premium Plus Teste",
-        "amount": Decimal(env("PAGARME_PREMIUM_PLUS_TEST_PRICE", default="5.00")),
-        "frequency": 1,
-        "frequency_type": "months",
-        "duration_days": 30,
-        "billing_type": "one_time",
-        "provider": "pagarme",
-        "hidden": True,
     },
 }
 MERCADOPAGO_USE_SANDBOX = env.bool("MERCADOPAGO_USE_SANDBOX", default=DEBUG)
-
-# --------------------------------------------------------------------------------------
-# Pagar.me
-# --------------------------------------------------------------------------------------
-PAGARME_SECRET_KEY = env("PAGARME_SECRET_KEY", default="")
-PAGARME_PUBLIC_KEY = env("PAGARME_PUBLIC_KEY", default="")
-PAGARME_BASE_URL = env("PAGARME_BASE_URL", default="https://api.pagar.me/core/v5")
-PAGARME_WEBHOOK_SECRET = env("PAGARME_WEBHOOK_SECRET", default="")
-PAGARME_SUCCESS_URL = env("PAGARME_SUCCESS_URL", default="")
-PAGARME_FAILURE_URL = env("PAGARME_FAILURE_URL", default="")
-PAGARME_WEBHOOK_URL = env("PAGARME_WEBHOOK_URL", default="")
-PAGARME_CHECKOUT_URL_BASE = env(
-    "PAGARME_CHECKOUT_URL_BASE", default="https://api.pagar.me/checkout/v1/orders"
-)
-PAGARME_PIX_EXPIRES_IN = env.int("PAGARME_PIX_EXPIRES_IN", default=3600)
-PAGARME_BOLETO_DAYS = env.int("PAGARME_BOLETO_DAYS", default=3)
-PAGARME_BOLETO_INSTRUCTIONS = env(
-    "PAGARME_BOLETO_INSTRUCTIONS",
-    default="Pagamento referente ao plano SMC Lab.",
-)
 
 # --------------------------------------------------------------------------------------
 # Discord
