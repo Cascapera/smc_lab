@@ -254,8 +254,8 @@ MERCADOPAGO_PLANS = {
         "frequency_type": "months",
         "duration_days": 90,
         "billing_type": "one_time",
-        "provider": "pagarme",
     },
+
     "premium_plus_semiannual": {
         "plan": "premium_plus",
         "label": "Premium Plus Semestral",
@@ -264,7 +264,7 @@ MERCADOPAGO_PLANS = {
         "frequency_type": "months",
         "duration_days": 180,
         "billing_type": "one_time",
-        "provider": "pagarme",
+        
     },
     "premium_plus_annual": {
         "plan": "premium_plus",
@@ -274,7 +274,7 @@ MERCADOPAGO_PLANS = {
         "frequency_type": "months",
         "duration_days": 365,
         "billing_type": "one_time",
-        "provider": "pagarme",
+        
     },
     "premium_plus_test": {
         "plan": "premium_plus",
