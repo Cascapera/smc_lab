@@ -130,6 +130,7 @@ class CreateCheckoutView(LoginRequiredMixin, View):
                     "country": profile.country or "BR",
                 }
 
+            boleto_due_at = (timezone.now() + timedelta(days=settings.PAGARME_BOLETO_DAYS)).isoformat()
             order_payload = {
                 "items": [
                     {
@@ -146,6 +147,11 @@ class CreateCheckoutView(LoginRequiredMixin, View):
                             "accepted_payment_methods": ["credit_card", "pix", "boleto"],
                             "success_url": pagarme_success_url,
                             "failure_url": pagarme_failure_url,
+                            "pix": {"expires_in": settings.PAGARME_PIX_EXPIRES_IN},
+                            "boleto": {
+                                "due_at": boleto_due_at,
+                                "instructions": settings.PAGARME_BOLETO_INSTRUCTIONS,
+                            },
                         },
                     }
                 ],

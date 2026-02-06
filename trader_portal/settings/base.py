@@ -300,6 +300,12 @@ PAGARME_WEBHOOK_SECRET = env("PAGARME_WEBHOOK_SECRET", default="")
 PAGARME_SUCCESS_URL = env("PAGARME_SUCCESS_URL", default="")
 PAGARME_FAILURE_URL = env("PAGARME_FAILURE_URL", default="")
 PAGARME_WEBHOOK_URL = env("PAGARME_WEBHOOK_URL", default="")
+PAGARME_PIX_EXPIRES_IN = env.int("PAGARME_PIX_EXPIRES_IN", default=3600)
+PAGARME_BOLETO_DAYS = env.int("PAGARME_BOLETO_DAYS", default=3)
+PAGARME_BOLETO_INSTRUCTIONS = env(
+    "PAGARME_BOLETO_INSTRUCTIONS",
+    default="Pagamento referente ao plano SMC Lab.",
+)
 
 # --------------------------------------------------------------------------------------
 # Discord
