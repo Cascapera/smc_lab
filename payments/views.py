@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timedelta
 
 from django.conf import settings
@@ -17,7 +18,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import TemplateView
 
 from accounts.models import Profile
-from .models import PaymentStatus, Subscription, SubscriptionStatus
+from .models import Payment, PaymentStatus, Subscription, SubscriptionStatus
 from .services.mercadopago import (
     create_preapproval,
     create_preapproval_plan,
@@ -26,6 +27,12 @@ from .services.mercadopago import (
     fetch_payment,
     fetch_preapproval,
 )
+from .services.pagarme import (
+    create_order,
+    fetch_order,
+    parse_webhook_payload,
+    verify_webhook_signature,
+)
 
 
 class PlanListView(LoginRequiredMixin, TemplateView):
@@ -33,7 +40,11 @@ class PlanListView(LoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["plans"] = settings.MERCADOPAGO_PLANS
+        context["plans"] = {
+            key: value
+            for key, value in settings.MERCADOPAGO_PLANS.items()
+            if not value.get("hidden")
+        }
         context["currency"] = settings.MERCADOPAGO_CURRENCY
         context["trial_days"] = settings.MERCADOPAGO_TRIAL_DAYS
         context["profile"] = getattr(self.request.user, "profile", None)
@@ -47,16 +58,13 @@ class CreateCheckoutView(LoginRequiredMixin, View):
             messages.error(request, "Plano inválido.")
             return redirect(reverse("payments:plans"))
 
-        if not settings.MERCADOPAGO_ACCESS_TOKEN:
-            messages.error(request, "Token do Mercado Pago não configurado.")
-            return redirect(reverse("payments:plans"))
-
         config = settings.MERCADOPAGO_PLANS[plan_key]
         plan_name = config["plan"]
         amount = config["amount"]
         currency = settings.MERCADOPAGO_CURRENCY
         frequency = config["frequency"]
         frequency_type = config["frequency_type"]
+        provider = config.get("provider", "mercadopago")
 
         success_url = request.build_absolute_uri(reverse("payments:return"))
         failure_url = request.build_absolute_uri(reverse("payments:return"))
@@ -78,6 +86,104 @@ class CreateCheckoutView(LoginRequiredMixin, View):
         payer_email = request.user.email
         if settings.MERCADOPAGO_USE_SANDBOX and settings.MERCADOPAGO_TEST_PAYER_EMAIL:
             payer_email = settings.MERCADOPAGO_TEST_PAYER_EMAIL
+
+        if provider == "pagarme":
+            if not settings.PAGARME_SECRET_KEY:
+                messages.error(request, "Pagar.me não configurado. Tente novamente mais tarde.")
+                return redirect(reverse("payments:plans"))
+
+            pagarme_success_url = settings.PAGARME_SUCCESS_URL or success_url
+            pagarme_failure_url = settings.PAGARME_FAILURE_URL or failure_url
+            if "localhost" in pagarme_success_url or "127.0.0.1" in pagarme_success_url:
+                messages.error(
+                    request,
+                    "Configure PAGARME_SUCCESS_URL com a URL pública (ngrok) no .env.",
+                )
+                return redirect(reverse("payments:plans"))
+
+            profile = getattr(request.user, "profile", None)
+            document = re.sub(r"\D", "", getattr(profile, "document_id", "") or "")
+            if not document:
+                messages.error(
+                    request,
+                    "CPF/CNPJ é obrigatório para pagamentos via Pagar.me. "
+                    "Atualize seu perfil e tente novamente.",
+                )
+                return redirect(reverse("payments:plans"))
+
+            customer_name = request.user.get_full_name() or request.user.username
+            customer_type = "company" if len(document) > 11 else "individual"
+            customer_payload = {
+                "name": customer_name,
+                "email": payer_email,
+                "type": customer_type,
+                "document": document,
+            }
+
+            if profile and profile.address_line1 and profile.zipcode and profile.city and profile.state:
+                customer_payload["address"] = {
+                    "line_1": profile.address_line1,
+                    "line_2": profile.address_line2 or "",
+                    "zip_code": profile.zipcode,
+                    "city": profile.city,
+                    "state": profile.state,
+                    "country": profile.country or "BR",
+                }
+
+            order_payload = {
+                "items": [
+                    {
+                        "amount": int(amount * 100),
+                        "description": config["label"],
+                        "quantity": 1,
+                        "code": plan_key,
+                    }
+                ],
+                "customer": customer_payload,
+                "metadata": {
+                    "user_id": request.user.id,
+                    "plan": plan_name,
+                    "plan_key": plan_key,
+                    "external_reference": external_reference,
+                },
+                "code": external_reference,
+                "checkout": {
+                    "accepted_payment_methods": ["credit_card", "pix", "boleto"],
+                    "success_url": pagarme_success_url,
+                    "failure_url": pagarme_failure_url,
+                },
+            }
+
+            try:
+                order = create_order(order_payload)
+            except Exception as exc:
+                messages.error(request, f"Não foi possível iniciar o pagamento. {exc}")
+                return redirect(reverse("payments:plans"))
+
+            checkout_url = (
+                order.get("checkout_url")
+                or order.get("payment_url")
+                or order.get("url")
+            )
+            if not checkout_url:
+                messages.error(request, "Checkout do Pagar.me não retornou URL.")
+                return redirect(reverse("payments:plans"))
+
+            Payment.objects.create(
+                user=request.user,
+                plan=plan_name,
+                amount=amount,
+                currency=currency,
+                status=PaymentStatus.PENDING,
+                mp_payment_id=str(order.get("id", "")),
+                external_reference=external_reference,
+                raw_payload=order,
+            )
+            return redirect(checkout_url)
+
+        if not settings.MERCADOPAGO_ACCESS_TOKEN:
+            messages.error(request, "Token do Mercado Pago não configurado.")
+            return redirect(reverse("payments:plans"))
 
         billing_type = config.get("billing_type", "subscription")
         if billing_type == "one_time":
@@ -332,6 +438,78 @@ class MercadoPagoWebhookView(View):
             _apply_plan(subscription.user.profile, subscription.plan_key, subscription.plan)
         elif status in {PaymentStatus.CHARGEDBACK, PaymentStatus.REFUNDED} and subscription:
             _maybe_revoke_plan(subscription.user.profile)
+
+        return HttpResponse(status=200)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class PagarmeWebhookView(View):
+    def post(self, request: HttpRequest) -> HttpResponse:
+        raw_body = request.body or b""
+        payload = parse_webhook_payload(raw_body)
+
+        if not verify_webhook_signature(
+            raw_body, request.headers.get("X-Hub-Signature"), settings.PAGARME_WEBHOOK_SECRET
+        ):
+            return HttpResponse(status=400)
+
+        event_type = payload.get("type") or payload.get("event") or ""
+        data = payload.get("data") or {}
+        order_id = data.get("id") or (data.get("object") or {}).get("id")
+        if not order_id:
+            return HttpResponse(status=200)
+
+        try:
+            order = fetch_order(str(order_id))
+        except Exception:
+            return HttpResponse(status=200)
+
+        status = order.get("status") or data.get("status") or ""
+        metadata = order.get("metadata") or {}
+        external_reference = metadata.get("external_reference") or order.get("code") or ""
+
+        user_id = metadata.get("user_id")
+        plan_key = metadata.get("plan_key")
+        plan = metadata.get("plan")
+
+        payment = None
+        if external_reference:
+            payment = Payment.objects.filter(external_reference=external_reference).first()
+        if not payment:
+            payment = Payment.objects.filter(mp_payment_id=str(order_id)).first()
+
+        if payment:
+            if status == "paid":
+                payment.status = PaymentStatus.APPROVED
+            elif status in {"canceled", "cancelled"} or "canceled" in event_type:
+                payment.status = PaymentStatus.CANCELLED
+            elif "refunded" in event_type or status == "refunded":
+                payment.status = PaymentStatus.REFUNDED
+            elif "payment_failed" in event_type or status == "failed":
+                payment.status = PaymentStatus.REJECTED
+            else:
+                payment.status = PaymentStatus.PENDING
+            payment.raw_payload = order
+            payment.save(update_fields=["status", "raw_payload", "updated_at"])
+
+        if status == "paid" and user_id and plan_key and plan:
+            profile = Profile.objects.filter(user_id=user_id).first()
+            if profile:
+                _apply_plan(profile, plan_key, plan)
+        elif (
+            user_id
+            and plan_key
+            and plan
+            and (
+                status in {"canceled", "cancelled", "refunded", "failed"}
+                or "canceled" in event_type
+                or "refunded" in event_type
+                or "payment_failed" in event_type
+            )
+        ):
+            profile = Profile.objects.filter(user_id=user_id).first()
+            if profile:
+                _maybe_revoke_plan(profile)
 
         return HttpResponse(status=200)
 

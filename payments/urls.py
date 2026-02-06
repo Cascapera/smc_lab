@@ -9,4 +9,5 @@ urlpatterns = [
     path("checkout/<str:plan>/", views.CreateCheckoutView.as_view(), name="checkout"),
     path("retorno/", views.PaymentReturnView.as_view(), name="return"),
     path("webhook/", views.MercadoPagoWebhookView.as_view(), name="webhook"),
+    path("pagarme/webhook/", views.PagarmeWebhookView.as_view(), name="pagarme-webhook"),
 ]
