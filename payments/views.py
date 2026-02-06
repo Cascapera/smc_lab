@@ -338,9 +338,11 @@ class MercadoPagoWebhookView(View):
 
 def _apply_plan(profile: Profile, plan_key: str, plan: str) -> None:
     now = timezone.now()
-    start_at = now
-    if profile.plan == plan and profile.plan_expires_at and profile.plan_expires_at > now:
-        start_at = profile.plan_expires_at
+    start_at = (
+        profile.plan_expires_at
+        if profile.plan == plan and profile.plan_expires_at and profile.plan_expires_at > now
+        else now
+    )
 
     profile.plan = plan
     profile.plan_expires_at = start_at + timedelta(days=_get_plan_duration(plan_key))
