@@ -69,6 +69,16 @@ def get_config() -> DiscordConfig:
     )
 
 
+def _validate_bot_config(config: DiscordConfig) -> bool:
+    if not config.bot_token:
+        logger.error("[discord] DISCORD_BOT_TOKEN não configurado.")
+        return False
+    if not config.guild_id:
+        logger.error("[discord] DISCORD_GUILD_ID não configurado.")
+        return False
+    return True
+
+
 def build_oauth_url(state: str) -> str:
     config = get_config()
     params = {
@@ -126,17 +136,35 @@ def _bot_request(method: str, url: str, **kwargs: Any) -> requests.Response:
 
 def add_role(discord_user_id: str, role_id: str) -> None:
     config = get_config()
+    if not _validate_bot_config(config):
+        return
     url = f"{DISCORD_API_BASE}/guilds/{config.guild_id}/members/{discord_user_id}/roles/{role_id}"
     resp = _bot_request("PUT", url)
-    if not resp.ok:
+    if resp.status_code in {401, 403}:
+        logger.error(
+            "[discord] Permissão negada ao adicionar role %s (status %s). "
+            "Verifique Manage Roles e hierarquia do bot.",
+            role_id,
+            resp.status_code,
+        )
+    elif not resp.ok:
         logger.warning("[discord] Falha ao adicionar role %s: %s", role_id, resp.text)
 
 
 def remove_role(discord_user_id: str, role_id: str) -> None:
     config = get_config()
+    if not _validate_bot_config(config):
+        return
     url = f"{DISCORD_API_BASE}/guilds/{config.guild_id}/members/{discord_user_id}/roles/{role_id}"
     resp = _bot_request("DELETE", url)
-    if not resp.ok and resp.status_code != 404:
+    if resp.status_code in {401, 403}:
+        logger.error(
+            "[discord] Permissão negada ao remover role %s (status %s). "
+            "Verifique Manage Roles e hierarquia do bot.",
+            role_id,
+            resp.status_code,
+        )
+    elif not resp.ok and resp.status_code != 404:
         logger.warning("[discord] Falha ao remover role %s: %s", role_id, resp.text)
 
 
@@ -153,10 +181,20 @@ def desired_role_for_plan(plan: str) -> str | None:
 
 def fetch_member_roles(discord_user_id: str) -> list[str] | None:
     config = get_config()
+    if not _validate_bot_config(config):
+        return None
     url = f"{DISCORD_API_BASE}/guilds/{config.guild_id}/members/{discord_user_id}"
     resp = _bot_request("GET", url)
     if resp.status_code == 404:
         logger.warning("[discord] Usuário não está no servidor: %s", discord_user_id)
+        return None
+    if resp.status_code in {401, 403}:
+        logger.error(
+            "[discord] Permissão negada ao buscar roles do usuário %s (status %s). "
+            "Verifique Manage Roles, intents e hierarquia do bot.",
+            discord_user_id,
+            resp.status_code,
+        )
         return None
     if not resp.ok:
         logger.warning("[discord] Falha ao buscar roles do usuário: %s", resp.text)
@@ -178,19 +216,33 @@ def remove_all_roles(discord_user_id: str) -> None:
 def sync_profile_roles(profile: Profile) -> None:
     """Sincroniza roles de acordo com o plano."""
     if not profile.discord_user_id:
+        logger.info("[discord] Perfil sem discord_user_id (user_id=%s).", profile.user_id)
         return
 
     current_roles = fetch_member_roles(profile.discord_user_id)
     if current_roles is None:
+        logger.info(
+            "[discord] Não foi possível obter roles do usuário %s (user_id=%s).",
+            profile.discord_user_id,
+            profile.user_id,
+        )
         return
 
-    desired_role = desired_role_for_plan(profile.active_plan())
+    active_plan = profile.active_plan()
+    desired_role = desired_role_for_plan(active_plan)
     config = get_config()
     role_ids = [
         config.role_basic_id,
         config.role_premium_id,
         config.role_premium_plus_id,
     ]
+    logger.info(
+        "[discord] Sincronizando roles (user_id=%s, discord_id=%s, plan=%s, desired_role=%s).",
+        profile.user_id,
+        profile.discord_user_id,
+        active_plan,
+        desired_role or "none",
+    )
 
     for role_id in role_ids:
         if not role_id:

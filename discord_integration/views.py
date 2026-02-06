@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import secrets
 
 from django.contrib import messages
@@ -18,6 +19,8 @@ from .services import (
     sync_profile_roles,
 )
 from .tasks import sync_user_roles
+
+logger = logging.getLogger(__name__)
 
 
 class DiscordLoginView(LoginRequiredMixin, View):
@@ -84,13 +87,23 @@ class DiscordCallbackView(LoginRequiredMixin, View):
 
         try:
             sync_profile_roles(profile)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.error(
+                "[discord] Falha ao sincronizar roles no callback (user_id=%s): %s",
+                request.user.id,
+                exc,
+                exc_info=True,
+            )
 
         try:
             sync_user_roles.delay(request.user.id)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.error(
+                "[discord] Falha ao enfileirar sync_user_roles (user_id=%s): %s",
+                request.user.id,
+                exc,
+                exc_info=True,
+            )
 
         messages.success(request, "Discord conectado com sucesso!")
         return redirect(reverse("accounts:profile"))
@@ -106,8 +119,13 @@ class DiscordUnlinkView(LoginRequiredMixin, View):
         discord_id = profile.discord_user_id
         try:
             remove_all_roles(discord_id)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.error(
+                "[discord] Falha ao remover roles no unlink (discord_id=%s): %s",
+                discord_id,
+                exc,
+                exc_info=True,
+            )
 
         profile.discord_user_id = ""
         profile.discord_username = ""
@@ -116,8 +134,13 @@ class DiscordUnlinkView(LoginRequiredMixin, View):
 
         try:
             sync_user_roles.delay(request.user.id)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.error(
+                "[discord] Falha ao enfileirar sync_user_roles no unlink (user_id=%s): %s",
+                request.user.id,
+                exc,
+                exc_info=True,
+            )
 
         messages.success(request, f"Discord desvinculado ({discord_id}).")
         return redirect(reverse("accounts:profile"))
