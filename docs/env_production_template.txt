@@ -42,6 +42,7 @@ PAGARME_SUCCESS_URL=https://SEU_DOMINIO/pagamentos/retorno/
 PAGARME_FAILURE_URL=https://SEU_DOMINIO/pagamentos/retorno/
 PAGARME_WEBHOOK_URL=https://SEU_DOMINIO/pagamentos/pagarme/webhook/
 PAGARME_PREMIUM_PLUS_TEST_PRICE=5.00
+PAGARME_CHECKOUT_URL_BASE=https://api.pagar.me/checkout/v1/orders
 PAGARME_PIX_EXPIRES_IN=3600
 PAGARME_BOLETO_DAYS=3
 PAGARME_BOLETO_INSTRUCTIONS=Pagamento referente ao plano SMC Lab.

@@ -217,6 +217,9 @@ class CreateCheckoutView(LoginRequiredMixin, View):
                                 checkout_id,
                                 exc,
                             )
+                        if not checkout_url:
+                            checkout_url = f"{settings.PAGARME_CHECKOUT_URL_BASE}/{checkout_id}"
+                            break
             if not checkout_url:
                 for charge in order.get("charges", []) or []:
                     checkout_url = (
