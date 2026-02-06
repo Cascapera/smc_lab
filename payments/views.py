@@ -120,8 +120,9 @@ class CreateCheckoutView(LoginRequiredMixin, View):
             cart_items = [
                 {
                     "amount": int(amount * 100),
+                    "name": config["label"],
                     "description": config["label"],
-                    "quantity": 1,
+                    "default_quantity": 1,
                     "code": plan_key,
                 }
             ]
@@ -143,9 +144,9 @@ class CreateCheckoutView(LoginRequiredMixin, View):
                 },
                 "payment_settings": {
                     "accepted_payment_methods": ["credit_card", "pix", "boleto"],
-                    "credit_card": {"installments": [1]},
-                    "pix": {"expires_in": settings.PAGARME_PIX_EXPIRES_IN},
-                    "boleto": {
+                    "credit_card_settings": {"installments": [1]},
+                    "pix_settings": {"expires_in": settings.PAGARME_PIX_EXPIRES_IN},
+                    "boleto_settings": {
                         "due_at": boleto_due_at,
                         "instructions": settings.PAGARME_BOLETO_INSTRUCTIONS,
                     },
