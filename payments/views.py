@@ -30,6 +30,7 @@ from .services.mercadopago import (
 )
 from .services.pagarme import (
     create_order,
+    fetch_checkout,
     fetch_order,
     parse_webhook_payload,
     verify_webhook_signature,
@@ -184,6 +185,13 @@ class CreateCheckoutView(LoginRequiredMixin, View):
                 checkouts = order.get("checkouts") or []
                 if checkouts:
                     checkout_url = (checkouts[0] or {}).get("url")
+                    checkout_id = (checkouts[0] or {}).get("id")
+                    if not checkout_url and checkout_id:
+                        try:
+                            checkout = fetch_checkout(str(checkout_id))
+                            checkout_url = checkout.get("url") or checkout.get("checkout_url")
+                        except Exception:
+                            checkout_url = None
             if not checkout_url:
                 for charge in order.get("charges", []) or []:
                     checkout_url = (

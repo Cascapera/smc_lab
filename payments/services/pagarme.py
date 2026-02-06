@@ -63,6 +63,21 @@ def fetch_order(order_id: str) -> dict[str, Any]:
     return resp.json()
 
 
+def fetch_checkout(checkout_id: str) -> dict[str, Any]:
+    config = get_config()
+    if not config.secret_key:
+        raise RuntimeError("PAGARME_SECRET_KEY não configurado.")
+
+    resp = requests.get(
+        f"{config.base_url}/checkouts/{checkout_id}",
+        auth=_auth(config),
+        timeout=20,
+    )
+    if not resp.ok:
+        raise RuntimeError(f"Erro Pagar.me (checkout): {resp.text}")
+    return resp.json()
+
+
 def verify_webhook_signature(
     payload_body: bytes, signature_header: str | None, webhook_secret: str
 ) -> bool:
