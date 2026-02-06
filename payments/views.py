@@ -158,6 +158,7 @@ class CreateCheckoutView(LoginRequiredMixin, View):
             try:
                 payment_link = create_payment_link(link_payload)
             except Exception as exc:
+                logger.error("[pagarme] Erro ao criar paymentlink: %s", exc, exc_info=True)
                 messages.error(request, f"Não foi possível iniciar o pagamento. {exc}")
                 return redirect(reverse("payments:plans"))
 
