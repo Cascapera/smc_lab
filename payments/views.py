@@ -183,15 +183,40 @@ class CreateCheckoutView(LoginRequiredMixin, View):
             )
             if not checkout_url:
                 checkouts = order.get("checkouts") or []
-                if checkouts:
-                    checkout_url = (checkouts[0] or {}).get("url")
-                    checkout_id = (checkouts[0] or {}).get("id")
-                    if not checkout_url and checkout_id:
+                for entry in checkouts:
+                    checkout_url = (
+                        (entry or {}).get("url")
+                        or (entry or {}).get("payment_url")
+                        or (entry or {}).get("checkout_url")
+                        or (entry or {}).get("secure_url")
+                    )
+                    if checkout_url:
+                        break
+                    checkout_id = (entry or {}).get("id") or (entry or {}).get("checkout_id")
+                    if checkout_id:
                         try:
                             checkout = fetch_checkout(str(checkout_id))
-                            checkout_url = checkout.get("url") or checkout.get("checkout_url")
-                        except Exception:
-                            checkout_url = None
+                            checkout_url = (
+                                checkout.get("url")
+                                or checkout.get("payment_url")
+                                or checkout.get("checkout_url")
+                                or checkout.get("secure_url")
+                                or checkout.get("link")
+                                or (checkout.get("checkout") or {}).get("url")
+                            )
+                            if checkout_url:
+                                break
+                            logger.warning(
+                                "[pagarme] Checkout sem URL (checkout_id=%s, keys=%s).",
+                                checkout_id,
+                                sorted(checkout.keys()),
+                            )
+                        except Exception as exc:
+                            logger.warning(
+                                "[pagarme] Falha ao buscar checkout %s: %s",
+                                checkout_id,
+                                exc,
+                            )
             if not checkout_url:
                 for charge in order.get("charges", []) or []:
                     checkout_url = (
