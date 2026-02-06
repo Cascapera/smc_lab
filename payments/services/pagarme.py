@@ -44,6 +44,12 @@ def create_payment_link(payload: dict[str, Any]) -> dict[str, Any]:
         timeout=20,
     )
     if not resp.ok:
+        logger.error(
+            "[pagarme] paymentlink falhou (status=%s, headers=%s, body=%s)",
+            resp.status_code,
+            dict(resp.headers),
+            resp.text,
+        )
         raise RuntimeError(f"Erro Pagar.me (paymentlink): {resp.text}")
     return resp.json()
 
