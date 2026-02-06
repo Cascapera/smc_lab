@@ -181,6 +181,10 @@ class CreateCheckoutView(LoginRequiredMixin, View):
                 or (order.get("checkout") or {}).get("url")
             )
             if not checkout_url:
+                checkouts = order.get("checkouts") or []
+                if checkouts:
+                    checkout_url = (checkouts[0] or {}).get("url")
+            if not checkout_url:
                 for charge in order.get("charges", []) or []:
                     checkout_url = (
                         charge.get("checkout_url")
