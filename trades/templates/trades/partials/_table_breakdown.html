@@ -1,4 +1,4 @@
-﻿<div style="overflow-x:auto;">
+<div style="overflow-x:auto;">
     <table style="width:100%;border-collapse:collapse;">
         <thead>
             <tr>
@@ -9,6 +9,7 @@
                 <th style="text-align:right;padding:0.5rem;border-bottom:1px solid #334155;">Break-even</th>
                 <th style="text-align:right;padding:0.5rem;border-bottom:1px solid #334155;">Win %</th>
                 <th style="text-align:right;padding:0.5rem;border-bottom:1px solid #334155;">Média lucro</th>
+                <th style="text-align:right;padding:0.5rem;border-bottom:1px solid #334155;">Result/ Técnico</th>
             </tr>
         </thead>
         <tbody>
@@ -21,10 +22,11 @@
                 <td style="padding:0.75rem;text-align:right;border-bottom:1px solid #1e293b;">{{ row.breakevens }}</td>
                 <td style="padding:0.75rem;text-align:right;border-bottom:1px solid #1e293b;">{{ row.win_rate }}%</td>
                 <td style="padding:0.75rem;text-align:right;border-bottom:1px solid #1e293b;">R$ {{ row.avg_profit }}</td>
+                <td style="padding:0.75rem;text-align:right;border-bottom:1px solid #1e293b;">{% if row.result_vs_technical is not None %}{{ row.result_vs_technical }}%{% else %}N/D{% endif %}</td>
             </tr>
             {% empty %}
             <tr>
-                <td colspan="7" style="padding:1rem;text-align:center;">Sem dados disponíveis.</td>
+                <td colspan="8" style="padding:1rem;text-align:center;">Sem dados disponíveis.</td>
             </tr>
             {% endfor %}
         </tbody>

@@ -21,6 +21,7 @@ def _aggregate_by(queryset, field: str, display_map: dict[str, str] | None = Non
             breakevens=Count("id", filter=Q(result_type=ResultType.BREAK_EVEN)),
             total_profit=Coalesce(Sum("profit_amount"), Decimal("0")),
             avg_profit=Coalesce(Avg("profit_amount"), Decimal("0")),
+            avg_technical=Coalesce(Avg("technical_gain"), Decimal("0")),
         )
         .order_by("-total")
     )
@@ -36,6 +37,12 @@ def _aggregate_by(queryset, field: str, display_map: dict[str, str] | None = Non
         label = display_map.get(raw_value, raw_value) if display_map else raw_value
         if not label:
             label = "N/D"
+        avg_profit = row["avg_profit"]
+        avg_technical = row["avg_technical"]
+        if avg_technical and float(avg_technical) != 0:
+            result_vs_technical = round(float(avg_profit) / float(avg_technical) * 100, 2)
+        else:
+            result_vs_technical = None
         data.append(
             {
                 "label": label,
@@ -44,7 +51,8 @@ def _aggregate_by(queryset, field: str, display_map: dict[str, str] | None = Non
                 "losses": losses,
                 "breakevens": breakevens,
                 "win_rate": round(win_rate, 2),
-                "avg_profit": round(row["avg_profit"], 2),
+                "avg_profit": round(avg_profit, 2),
+                "result_vs_technical": result_vs_technical,
             }
         )
     return data

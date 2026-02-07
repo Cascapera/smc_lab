@@ -17,7 +17,7 @@ from django.views.generic import CreateView, TemplateView, UpdateView
 from accounts.mixins import PlanRequiredMixin
 from django.utils.safestring import mark_safe
 from accounts.models import Plan, Profile
-from .analytics import compute_user_dashboard
+from .analytics import compute_user_dashboard, _aggregate_by
 from .forms import TradeForm
 from .models import (
     EntryType,
@@ -275,10 +275,25 @@ class AdvancedDashboardView(PlanRequiredMixin, TemplateView):
             "drawdown": dd_series,
         }
 
-        # Reaproveita tabelas por mercado/setup/entrada
+        # Reaproveita tabelas por mercado/setup/entrada (já com Result/ Técnico)
         context["by_market"] = base.get("by_market", [])
         context["by_setup"] = base.get("by_setup", [])
         context["by_entry_type"] = base.get("by_entry_type", [])
+
+        # Tabelas por HTF, tendência, painel SMC, região HTF e gatilho
+        context["by_htf"] = _aggregate_by(
+            trades_qs, "high_time_frame", dict(HighTimeFrame.choices)
+        )
+        context["by_trend"] = _aggregate_by(trades_qs, "trend", dict(Trend.choices))
+        context["by_smc_panel"] = _aggregate_by(
+            trades_qs, "smc_panel", dict(SMCPanel.choices)
+        )
+        context["by_region_htf"] = _aggregate_by(
+            trades_qs, "region_htf", dict(RegionHTF.choices)
+        )
+        context["by_trigger"] = _aggregate_by(
+            trades_qs, "trigger", dict(Trigger.choices)
+        )
 
         # Lista de trades com filtros avançados
         table_qs = Trade.objects.filter(user=self.request.user)

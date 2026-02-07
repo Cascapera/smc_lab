@@ -254,6 +254,31 @@
     {% include "trades/partials/_table_breakdown.html" with rows=by_entry_type %}
 </section>
 
+<section style="margin-bottom:2rem;">
+    <h2>Resultados por contexto macro (HTF)</h2>
+    {% include "trades/partials/_table_breakdown.html" with rows=by_htf %}
+</section>
+
+<section style="margin-bottom:2rem;">
+    <h2>Resultados por tendência</h2>
+    {% include "trades/partials/_table_breakdown.html" with rows=by_trend %}
+</section>
+
+<section style="margin-bottom:2rem;">
+    <h2>Resultados por Painel SMC</h2>
+    {% include "trades/partials/_table_breakdown.html" with rows=by_smc_panel %}
+</section>
+
+<section style="margin-bottom:2rem;">
+    <h2>Resultados por Região HTF</h2>
+    {% include "trades/partials/_table_breakdown.html" with rows=by_region_htf %}
+</section>
+
+<section style="margin-bottom:2rem;">
+    <h2>Resultados por Gatilho</h2>
+    {% include "trades/partials/_table_breakdown.html" with rows=by_trigger %}
+</section>
+
 {% if advanced_chart.labels %}
   {{ advanced_chart|json_script:"advanced-chart-data" }}
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
