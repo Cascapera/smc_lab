@@ -42,9 +42,6 @@
       <div><strong>CPF/CNPJ:</strong> {{ profile.document_id|default:"N/D" }}</div>
       <div><strong>Endereço:</strong> {{ profile.address_line1|default:"N/D" }}</div>
       <div><strong>Complemento:</strong> {{ profile.address_line2|default:"N/D" }}</div>
-      {% if not profile.document_id %}
-        <div style="color:#fbbf24;">CPF/CNPJ é obrigatório para pagamentos via Pagar.me.</div>
-      {% endif %}
     </div>
   </div>
 

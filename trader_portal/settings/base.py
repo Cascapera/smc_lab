@@ -213,7 +213,7 @@ MERCADOPAGO_PLANS = {
     "basic_annual": {
         "plan": "basic",
         "label": "Basic Anual",
-        "amount": Decimal(env("MERCADOPAGO_BASIC_ANNUAL_PRICE", default="359.88")),
+        "amount": Decimal(env("MERCADOPAGO_BASIC_ANNUAL_PRICE", default="280.00")),
         "frequency": 12,
         "frequency_type": "months",
         "duration_days": 365,
@@ -231,7 +231,7 @@ MERCADOPAGO_PLANS = {
     "premium_annual": {
         "plan": "premium",
         "label": "Premium Anual",
-        "amount": Decimal(env("MERCADOPAGO_PREMIUM_ANNUAL_PRICE", default="719.88")),
+        "amount": Decimal(env("MERCADOPAGO_PREMIUM_ANNUAL_PRICE", default="560.15")),
         "frequency": 12,
         "frequency_type": "months",
         "duration_days": 365,
@@ -279,36 +279,15 @@ MERCADOPAGO_PLANS = {
     "premium_plus_test": {
         "plan": "premium_plus",
         "label": "Premium Plus Teste",
-        "amount": Decimal(env("PAGARME_PREMIUM_PLUS_TEST_PRICE", default="5.00")),
+        "amount": Decimal(env("MERCADOPAGO_PREMIUM_PLUS_TEST_PRICE", default="5.00")),
         "frequency": 1,
         "frequency_type": "months",
         "duration_days": 30,
         "billing_type": "one_time",
-        "provider": "pagarme",
         "hidden": True,
     },
 }
 MERCADOPAGO_USE_SANDBOX = env.bool("MERCADOPAGO_USE_SANDBOX", default=DEBUG)
-
-# --------------------------------------------------------------------------------------
-# Pagar.me
-# --------------------------------------------------------------------------------------
-PAGARME_SECRET_KEY = env("PAGARME_SECRET_KEY", default="")
-PAGARME_PUBLIC_KEY = env("PAGARME_PUBLIC_KEY", default="")
-PAGARME_BASE_URL = env("PAGARME_BASE_URL", default="https://api.pagar.me/core/v5")
-PAGARME_WEBHOOK_SECRET = env("PAGARME_WEBHOOK_SECRET", default="")
-PAGARME_SUCCESS_URL = env("PAGARME_SUCCESS_URL", default="")
-PAGARME_FAILURE_URL = env("PAGARME_FAILURE_URL", default="")
-PAGARME_WEBHOOK_URL = env("PAGARME_WEBHOOK_URL", default="")
-PAGARME_PAYMENT_LINK_URL_BASE = env(
-    "PAGARME_PAYMENT_LINK_URL_BASE", default="https://api.pagar.me/checkout/v1/payment-links"
-)
-PAGARME_PIX_EXPIRES_IN = env.int("PAGARME_PIX_EXPIRES_IN", default=3600)
-PAGARME_BOLETO_DAYS = env.int("PAGARME_BOLETO_DAYS", default=3)
-PAGARME_BOLETO_INSTRUCTIONS = env(
-    "PAGARME_BOLETO_INSTRUCTIONS",
-    default="Pagamento referente ao plano SMC Lab.",
-)
 
 # --------------------------------------------------------------------------------------
 # Discord
