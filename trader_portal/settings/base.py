@@ -231,7 +231,7 @@ MERCADOPAGO_PLANS = {
     "premium_annual": {
         "plan": "premium",
         "label": "Premium Anual",
-        "amount": Decimal(env("MERCADOPAGO_PREMIUM_ANNUAL_PRICE", default="560.15")),
+        "amount": Decimal(env("MERCADOPAGO_PREMIUM_ANNUAL_PRICE", default="589.50")),
         "frequency": 12,
         "frequency_type": "months",
         "duration_days": 365,
