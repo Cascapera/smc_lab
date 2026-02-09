@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.paginator import Paginator
-from django.db.models import Avg, Sum
-from django.db.models.functions import Coalesce
+from django.db.models import Avg, Case, Count, DecimalField, F, Q, Sum, Value, When
+from django.db.models.functions import Coalesce, ExtractHour
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse, reverse_lazy
@@ -20,6 +21,7 @@ from accounts.models import Plan, Profile
 from .analytics import compute_user_dashboard, _aggregate_by
 from .forms import TradeForm
 from .models import (
+    AIAnalyticsRun,
     EntryType,
     Market,
     ResultType,
@@ -190,6 +192,43 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             "result_types": ResultType.choices,
         }
         return context
+
+
+def _can_request_ai_analysis(user):
+    """
+    Verifica se o usuário pode solicitar nova análise por IA.
+    Só pode quando: (1) passaram 7+ dias desde a última análise e
+    (2) existe pelo menos 1 trade novo desde essa última análise.
+    Retorna (pode_solicitar, proxima_disponivel_em, ultima_execucao, tem_trades_novos).
+    """
+    # Última execução que realmente gerou resultado (chamou LLM)
+    last_run = (
+        AIAnalyticsRun.objects.filter(user=user)
+        .exclude(result="")
+        .order_by("-requested_at")
+        .first()
+    )
+    # Se não há run com resultado, usa qualquer última run para "next_available"
+    last_run_any = (
+        AIAnalyticsRun.objects.filter(user=user)
+        .order_by("-requested_at")
+        .first()
+    )
+    ref_run = last_run or last_run_any
+
+    seven_days_passed = ref_run is None or (ref_run.requested_at + timedelta(days=7) <= timezone.now())
+    has_new_trades = ref_run is None or Trade.objects.filter(
+        user=user, executed_at__gt=ref_run.requested_at
+    ).exists()
+
+    can_request = seven_days_passed and has_new_trades
+    next_available = None
+    if ref_run and not seven_days_passed:
+        next_available = ref_run.requested_at + timedelta(days=7)
+    elif ref_run and seven_days_passed and not has_new_trades:
+        next_available = ref_run.requested_at + timedelta(days=7)
+
+    return can_request, next_available, last_run, has_new_trades, seven_days_passed
 
 
 class AdvancedDashboardView(PlanRequiredMixin, TemplateView):
@@ -368,3 +407,281 @@ class AdvancedDashboardView(PlanRequiredMixin, TemplateView):
         }
 
         return context
+
+
+class AnalyticsIAView(PlanRequiredMixin, TemplateView):
+    """
+    Analytics avançado por IA. Apenas Premium/Premium+.
+    Limite: 1 solicitação por semana por usuário.
+    Métricas são pré-calculadas; a IA responde apenas a perguntas específicas (economia de tokens).
+    """
+    template_name = "trades/analytics_ia.html"
+    required_plan = Plan.PREMIUM
+    insufficient_message = mark_safe(
+        "A análise por IA é exclusiva para planos Premium e Premium+. "
+        'Para contratar, entre em contato pelo '
+        '<a href="https://wa.me/5511975743767" target="_blank" rel="noopener">WhatsApp</a>.'
+    )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        user = self.request.user
+        base = compute_user_dashboard(user)
+        context["dashboard"] = base
+
+        trades_qs = Trade.objects.filter(user=user).order_by("executed_at")
+        profile = Profile.objects.filter(user=user).first()
+        if profile and profile.last_reset_at:
+            trades_qs = trades_qs.filter(executed_at__gte=profile.last_reset_at)
+
+        gains = trades_qs.filter(profit_amount__gt=0)
+        losses = trades_qs.filter(profit_amount__lt=0)
+        gross_gain = gains.aggregate(total=Coalesce(Sum("profit_amount"), Decimal("0")))["total"]
+        gross_loss = losses.aggregate(total=Coalesce(Sum("profit_amount"), Decimal("0")))["total"]
+        avg_gain = gains.aggregate(avg=Coalesce(Avg("profit_amount"), Decimal("0")))["avg"]
+        avg_loss = losses.aggregate(avg=Coalesce(Avg("profit_amount"), Decimal("0")))["avg"]
+
+        profit_factor = float(gross_gain) / abs(float(gross_loss)) if gross_loss and float(gross_loss) != 0 else None
+        payoff = float(avg_gain) / abs(float(avg_loss)) if avg_loss and float(avg_loss) != 0 else None
+
+        longest_win = longest_loss = current_win = current_loss = 0
+        for profit_amount in trades_qs.values_list("profit_amount", flat=True):
+            if profit_amount > 0:
+                current_win += 1
+                current_loss = 0
+            elif profit_amount < 0:
+                current_loss += 1
+                current_win = 0
+            else:
+                current_win = 0
+                current_loss = 0
+            longest_win = max(longest_win, current_win)
+            longest_loss = max(longest_loss, current_loss)
+
+        balance_series = base.get("balance_series", [])
+        peak = Decimal(str(base["summary"]["initial_balance"]))
+        max_dd = Decimal("0")
+        max_dd_pct = Decimal("0")
+        for point in balance_series:
+            bal = Decimal(str(point["balance"]))
+            peak = max(peak, bal)
+            dd = bal - peak
+            dd_pct = (dd / peak * 100) if peak else Decimal("0")
+            if dd < max_dd:
+                max_dd = dd
+            if dd_pct < max_dd_pct:
+                max_dd_pct = dd_pct
+
+        context["advanced"] = {
+            "profit_factor": round(profit_factor, 2) if profit_factor is not None else "N/D",
+            "payoff": round(payoff, 2) if payoff is not None else "N/D",
+            "max_drawdown": round(float(max_dd), 2),
+            "max_drawdown_pct": round(float(max_dd_pct), 2),
+            "longest_win_streak": longest_win,
+            "longest_loss_streak": longest_loss,
+            "avg_gain": round(float(avg_gain), 2),
+            "avg_loss": round(float(avg_loss), 2),
+            "best_trade": base["summary"]["best_trade"],
+            "worst_trade": base["summary"]["worst_trade"],
+            "total_trades": base["summary"]["total_trades"],
+            "win_rate": base["summary"]["win_rate"],
+            "total_profit": base["summary"]["total_profit"],
+        }
+        context["by_market"] = base.get("by_market", [])
+        context["by_setup"] = base.get("by_setup", [])
+        context["by_entry_type"] = base.get("by_entry_type", [])
+
+        # Tabela de trades ordenada por ganho (decrescente) com Ganho/CT e paginação
+        trades_for_table = trades_qs.annotate(
+            ganho_ct=Case(
+                When(market=Market.FOREX, then=F("profit_amount") * Value(Decimal("0.01")) / F("quantity")),
+                default=F("profit_amount") / F("quantity"),
+                output_field=DecimalField(),
+            )
+        ).order_by("-profit_amount")
+        paginator_table = Paginator(trades_for_table, 20)
+        page_num = self.request.GET.get("analytics_page", 1)
+        context["analytics_trades_page"] = paginator_table.get_page(page_num)
+
+        # Top 3 melhores e piores combinações (Setup, Entrada, HTF, Região HTF, Tendência, Painel SMC, Gatilho, Parcial)
+        combo_fields = [
+            "setup",
+            "entry_type",
+            "high_time_frame",
+            "region_htf",
+            "trend",
+            "smc_panel",
+            "trigger",
+            "partial_trade",
+        ]
+        choice_maps = {
+            "setup": dict(Setup.choices),
+            "entry_type": dict(EntryType.choices),
+            "high_time_frame": dict(HighTimeFrame.choices),
+            "region_htf": dict(RegionHTF.choices),
+            "trend": dict(Trend.choices),
+            "smc_panel": dict(SMCPanel.choices),
+            "trigger": dict(Trigger.choices),
+            "partial_trade": dict(PartialTrade.choices),
+        }
+
+        combos = (
+            trades_qs.values(*combo_fields)
+            .annotate(total=Coalesce(Sum("profit_amount"), Decimal("0")))
+            .order_by("-total")
+        )
+        top3_best_raw = list(combos[:3])
+        top3_worst_raw = list(trades_qs.values(*combo_fields).annotate(total=Coalesce(Sum("profit_amount"), Decimal("0"))).order_by("total")[:3])
+
+        def _combo_rows(raw_list):
+            return [
+                {
+                    **{f: row[f] for f in combo_fields},
+                    "total": row["total"],
+                    "labels": {f: choice_maps[f].get(row[f], row[f] or "N/D") for f in combo_fields},
+                }
+                for row in raw_list
+            ]
+
+        context["top3_best_combos"] = _combo_rows(top3_best_raw)
+        context["top3_worst_combos"] = _combo_rows(top3_worst_raw)
+
+        # Texto de melhora: se parar as combinações negativas
+        total_profit = base["summary"]["total_profit"]
+        sum_worst = sum(float(r["total"]) for r in top3_worst_raw)
+        improvement_reais = abs(min(0, sum_worst))
+        improvement_new_total = float(total_profit) + improvement_reais
+        denom = abs(float(total_profit)) if total_profit else 1
+        improvement_pct = round(improvement_reais / denom * 100, 2) if denom else 0
+        context["improvement_reais"] = round(improvement_reais, 2)
+        context["improvement_new_total"] = round(improvement_new_total, 2)
+        context["improvement_pct"] = improvement_pct
+
+        # % resultado/ganho técnico (global) para as regras fixas da análise
+        agg_tech = trades_qs.aggregate(
+            total_technical=Coalesce(Sum("technical_gain"), Decimal("0")),
+        )
+        total_technical = agg_tech["total_technical"]
+        if total_technical and float(total_technical) != 0:
+            context["result_vs_technical_pct"] = round(
+                float(total_profit) / float(total_technical) * 100, 2
+            )
+        else:
+            context["result_vs_technical_pct"] = None
+
+        # Gráfico por horário (ganho, perda, lucro por hora)
+        hourly = (
+            trades_qs.annotate(hour=ExtractHour("executed_at"))
+            .values("hour")
+            .annotate(
+                gain=Coalesce(Sum("profit_amount", filter=Q(profit_amount__gt=0)), Decimal("0")),
+                loss=Coalesce(Sum("profit_amount", filter=Q(profit_amount__lt=0)), Decimal("0")),
+            )
+            .order_by("hour")
+        )
+        context["chart_hour_data"] = [
+            {
+                "label": f"{r['hour']:02d}:00",
+                "gain": float(r["gain"]),
+                "loss": float(r["loss"]),
+                "net": float(r["gain"]) + float(r["loss"]),
+            }
+            for r in hourly
+        ]
+
+        # Gráfico por símbolo (top 10 por quantidade de trades)
+        symbol_top = (
+            trades_qs.values("symbol")
+            .annotate(
+                n=Count("id"),
+                gain=Coalesce(Sum("profit_amount", filter=Q(profit_amount__gt=0)), Decimal("0")),
+                loss=Coalesce(Sum("profit_amount", filter=Q(profit_amount__lt=0)), Decimal("0")),
+            )
+            .order_by("-n")[:10]
+        )
+        context["chart_symbol_data"] = [
+            {
+                "label": r["symbol"],
+                "gain": float(r["gain"]),
+                "loss": float(r["loss"]),
+                "net": float(r["gain"]) + float(r["loss"]),
+            }
+            for r in symbol_top
+        ]
+
+        # Gráfico pizza por mercado (5 mercados: ganho, perda, lucro)
+        context["chart_market_data"] = []
+        for market_value, market_label in Market.choices:
+            qs_m = trades_qs.filter(market=market_value)
+            agg = qs_m.aggregate(
+                gain=Coalesce(Sum("profit_amount", filter=Q(profit_amount__gt=0)), Decimal("0")),
+                loss=Coalesce(Sum("profit_amount", filter=Q(profit_amount__lt=0)), Decimal("0")),
+            )
+            total_m = float(agg["gain"]) + float(agg["loss"])
+            context["chart_market_data"].append(
+                {
+                    "market_label": market_label,
+                    "gain": float(agg["gain"]),
+                    "loss": abs(float(agg["loss"])),
+                    "net": total_m,
+                }
+            )
+
+        can_request, next_available, last_run, has_new_trades, seven_days_passed = _can_request_ai_analysis(user)
+        context["ai_can_request"] = can_request
+        context["ai_next_available"] = next_available
+        context["ai_last_run"] = last_run
+        context["ai_has_new_trades"] = has_new_trades
+        context["ai_seven_days_passed"] = seven_days_passed
+        context["ai_requested"] = self.request.GET.get("requested") == "1"
+
+        return context
+
+    def post(self, request, *args, **kwargs):
+        can_request, next_available, last_run, has_new_trades, seven_days_passed = _can_request_ai_analysis(request.user)
+        if not can_request:
+            if not has_new_trades:
+                messages.warning(
+                    request,
+                    "Registre pelo menos um novo trade desde a última análise para solicitar uma nova.",
+                )
+            else:
+                messages.warning(
+                    request,
+                    "Sua próxima análise poderá ser realizada após 7 dias da última.",
+                )
+            return redirect(reverse("trades:analytics_ia"))
+
+        # Contexto para a LLM (mesmo usado na página)
+        context = self.get_context_data()
+        from django.conf import settings as django_settings
+        from .ai_prompts import get_analytics_rules_text
+        from .book_recommendations import get_book_recommendations_text
+        from .llm_service import run_analytics_llm
+
+        run = AIAnalyticsRun.objects.create(user=request.user)
+        try:
+            result_text = run_analytics_llm(context)
+            rules_text = get_analytics_rules_text(
+                context.get("result_vs_technical_pct"),
+                (context.get("advanced") or {}).get("win_rate"),
+            )
+            if rules_text:
+                result_text = (result_text or "") + "\n\n" + rules_text
+
+            book_text = get_book_recommendations_text(
+                context.get("top3_worst_combos") or [],
+                url_smart_money_concept=getattr(django_settings, "BOOK_SMART_MONEY_CONCEPT_URL", "") or "",
+                url_black_book=getattr(django_settings, "BOOK_BLACK_BOOK_URL", "") or "",
+            )
+            if book_text:
+                result_text = (result_text or "") + "\n\n" + book_text
+
+            run.result = result_text or "A IA não retornou texto. Tente novamente mais tarde."
+            run.save(update_fields=["result"])
+            messages.success(request, "Análise concluída. Veja o resultado abaixo.")
+        except Exception:
+            run.result = "Não foi possível gerar a análise no momento. Verifique a configuração da API (OPENAI_API_KEY) ou tente mais tarde."
+            run.save(update_fields=["result"])
+            messages.warning(request, "A análise foi registrada, mas a IA não respondeu. Tente novamente mais tarde ou confira os logs.")
+        return redirect(reverse("trades:analytics_ia") + "?requested=1")

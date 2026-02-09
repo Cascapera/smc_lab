@@ -27,6 +27,18 @@ if ENV_FILE.exists():
 LOG_DIR = Path(env("DJANGO_LOG_DIR", default=str(BASE_DIR / "logs")))
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
+
+def _decimal_env(name: str, default: str) -> Decimal:
+    """Lê variável de ambiente como Decimal; aceita vírgula e usa default se inválido."""
+    raw = env(name, default=default)
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        raw = default
+    raw = str(raw).strip().replace(",", ".")
+    try:
+        return Decimal(raw)
+    except Exception:
+        return Decimal(default)
+
 # --------------------------------------------------------------------------------------
 # Core settings
 # --------------------------------------------------------------------------------------
@@ -204,7 +216,7 @@ MERCADOPAGO_PLANS = {
     "basic_monthly": {
         "plan": "basic",
         "label": "Basic Mensal",
-        "amount": Decimal(env("MERCADOPAGO_BASIC_MONTHLY_PRICE", default="79.90")),
+        "amount": _decimal_env("MERCADOPAGO_BASIC_MONTHLY_PRICE", "79.90"),
         "frequency": 1,
         "frequency_type": "months",
         "duration_days": 30,
@@ -213,7 +225,7 @@ MERCADOPAGO_PLANS = {
     "basic_annual": {
         "plan": "basic",
         "label": "Basic Anual",
-        "amount": Decimal(env("MERCADOPAGO_BASIC_ANNUAL_PRICE", default="280.00")),
+        "amount": _decimal_env("MERCADOPAGO_BASIC_ANNUAL_PRICE", "280.00"),
         "frequency": 12,
         "frequency_type": "months",
         "duration_days": 365,
@@ -222,7 +234,7 @@ MERCADOPAGO_PLANS = {
     "premium_monthly": {
         "plan": "premium",
         "label": "Premium Mensal",
-        "amount": Decimal(env("MERCADOPAGO_PREMIUM_MONTHLY_PRICE", default="129.90")),
+        "amount": _decimal_env("MERCADOPAGO_PREMIUM_MONTHLY_PRICE", "129.90"),
         "frequency": 1,
         "frequency_type": "months",
         "duration_days": 30,
@@ -231,7 +243,7 @@ MERCADOPAGO_PLANS = {
     "premium_annual": {
         "plan": "premium",
         "label": "Premium Anual",
-        "amount": Decimal(env("MERCADOPAGO_PREMIUM_ANNUAL_PRICE", default="589.50")),
+        "amount": _decimal_env("MERCADOPAGO_PREMIUM_ANNUAL_PRICE", "589.50"),
         "frequency": 12,
         "frequency_type": "months",
         "duration_days": 365,
@@ -240,7 +252,7 @@ MERCADOPAGO_PLANS = {
     "premium_plus_monthly": {
         "plan": "premium_plus",
         "label": "Premium Plus Mensal",
-        "amount": Decimal(env("MERCADOPAGO_PREMIUM_PLUS_MONTHLY_PRICE", default="250.00")),
+        "amount": _decimal_env("MERCADOPAGO_PREMIUM_PLUS_MONTHLY_PRICE", "250.00"),
         "frequency": 1,
         "frequency_type": "months",
         "duration_days": 30,
@@ -249,7 +261,7 @@ MERCADOPAGO_PLANS = {
     "premium_plus_quarterly": {
         "plan": "premium_plus",
         "label": "Premium Plus Trimestral",
-        "amount": Decimal(env("MERCADOPAGO_PREMIUM_PLUS_QUARTERLY_PRICE", default="600.00")),
+        "amount": _decimal_env("MERCADOPAGO_PREMIUM_PLUS_QUARTERLY_PRICE", "600.00"),
         "frequency": 3,
         "frequency_type": "months",
         "duration_days": 90,
@@ -259,7 +271,7 @@ MERCADOPAGO_PLANS = {
     "premium_plus_semiannual": {
         "plan": "premium_plus",
         "label": "Premium Plus Semestral",
-        "amount": Decimal(env("MERCADOPAGO_PREMIUM_PLUS_SEMIANNUAL_PRICE", default="1000.00")),
+        "amount": _decimal_env("MERCADOPAGO_PREMIUM_PLUS_SEMIANNUAL_PRICE", "1000.00"),
         "frequency": 6,
         "frequency_type": "months",
         "duration_days": 180,
@@ -269,7 +281,7 @@ MERCADOPAGO_PLANS = {
     "premium_plus_annual": {
         "plan": "premium_plus",
         "label": "Premium Plus Anual",
-        "amount": Decimal(env("MERCADOPAGO_PREMIUM_PLUS_ANNUAL_PRICE", default="1800.00")),
+        "amount": _decimal_env("MERCADOPAGO_PREMIUM_PLUS_ANNUAL_PRICE", "1800.00"),
         "frequency": 12,
         "frequency_type": "months",
         "duration_days": 365,
@@ -279,7 +291,7 @@ MERCADOPAGO_PLANS = {
     "premium_plus_test": {
         "plan": "premium_plus",
         "label": "Premium Plus Teste",
-        "amount": Decimal(env("MERCADOPAGO_PREMIUM_PLUS_TEST_PRICE", default="5.00")),
+        "amount": _decimal_env("MERCADOPAGO_PREMIUM_PLUS_TEST_PRICE", "5.00"),
         "frequency": 1,
         "frequency_type": "months",
         "duration_days": 30,
@@ -300,3 +312,11 @@ DISCORD_GUILD_ID = env("DISCORD_GUILD_ID", default="")
 DISCORD_ROLE_BASIC_ID = env("DISCORD_ROLE_BASIC_ID", default="")
 DISCORD_ROLE_PREMIUM_ID = env("DISCORD_ROLE_PREMIUM_ID", default="")
 DISCORD_ROLE_PREMIUM_PLUS_ID = env("DISCORD_ROLE_PREMIUM_PLUS_ID", default="")
+
+# Análise por IA (OpenAI GPT-4o mini)
+OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
+OPENAI_ANALYTICS_MODEL = env("OPENAI_ANALYTICS_MODEL", default="gpt-4o-mini")
+
+# Livros recomendados na análise (links de compra)
+BOOK_SMART_MONEY_CONCEPT_URL = env("BOOK_SMART_MONEY_CONCEPT_URL", default="")
+BOOK_BLACK_BOOK_URL = env("BOOK_BLACK_BOOK_URL", default="")

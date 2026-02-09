@@ -240,3 +240,26 @@ class Trade(models.Model):
 
     def __str__(self) -> str:
         return f"{self.symbol} ({self.get_direction_display()}) - {self.executed_at:%Y-%m-%d %H:%M}"
+
+
+class AIAnalyticsRun(models.Model):
+    """
+    Registro de cada execução de análise por IA (limite 1x por semana).
+    Só é criado quando há chamada real à LLM. result guarda a resposta da IA.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="ai_analytics_runs",
+    )
+    requested_at = models.DateTimeField("solicitado em", auto_now_add=True)
+    result = models.TextField("resultado da análise", blank=True)
+
+    class Meta:
+        ordering = ("-requested_at",)
+        verbose_name = "execução análise IA"
+        verbose_name_plural = "execuções análise IA"
+
+    def __str__(self) -> str:
+        return f"Análise IA – {self.user} em {self.requested_at:%Y-%m-%d %H:%M}"
