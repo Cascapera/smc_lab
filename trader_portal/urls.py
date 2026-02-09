@@ -21,6 +21,8 @@ from django.templatetags.static import static as static_url
 from django.urls import include, path
 from django.views.generic import RedirectView, TemplateView
 
+from trades.views import MuralView
+
 urlpatterns = [
     path(
         "favicon.ico",
@@ -37,6 +39,7 @@ urlpatterns = [
         TemplateView.as_view(template_name="recursos.html"),
         name="recursos",
     ),
+    path("mural/", MuralView.as_view(), name="mural"),
     path(
         "",
         TemplateView.as_view(template_name="landing.html"),

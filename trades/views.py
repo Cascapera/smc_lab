@@ -18,6 +18,16 @@ from django.views.generic import CreateView, TemplateView, UpdateView
 from accounts.mixins import PlanRequiredMixin
 from django.utils.safestring import mark_safe
 from accounts.models import Plan, Profile
+
+
+def _mural_display_name(trade: Trade) -> str:
+    """Primeiro nome do usuário ou 'Anônimo' conforme preferência do trade."""
+    if trade.display_as_anonymous:
+        return "Anônimo"
+    name = trade.user.first_name or (trade.user.get_full_name() or "").strip()
+    if name:
+        return name.split()[0] if name.split() else "Anônimo"
+    return "Anônimo"
 from .analytics import compute_user_dashboard, _aggregate_by
 from .forms import TradeForm
 from .models import (
@@ -130,6 +140,30 @@ class TradeScreenshotView(LoginRequiredMixin, View):
         return FileResponse(screenshot_file, as_attachment=False)
 
 
+class MuralView(TemplateView):
+    """Mural público: últimos 40 trades com imagem, is_public e usuário Basic+."""
+    template_name = "trades/mural.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        now = timezone.now()
+        qs = (
+            Trade.objects.filter(is_public=True)
+            .exclude(screenshot="")
+            .filter(
+                Q(user__profile__plan__in=[Plan.BASIC, Plan.PREMIUM, Plan.PREMIUM_PLUS]),
+                Q(user__profile__plan_expires_at__isnull=True)
+                | Q(user__profile__plan_expires_at__gt=now),
+            )
+            .select_related("user")
+            .order_by("-executed_at", "-id")[:40]
+        )
+        context["mural_trades"] = [
+            {"trade": t, "display_name": _mural_display_name(t)} for t in qs
+        ]
+        return context
+
+
 class DashboardView(LoginRequiredMixin, TemplateView):
     template_name = "trades/dashboard.html"
 
@@ -199,8 +233,15 @@ def _can_request_ai_analysis(user):
     Verifica se o usuário pode solicitar nova análise por IA.
     Só pode quando: (1) passaram 7+ dias desde a última análise e
     (2) existe pelo menos 1 trade novo desde essa última análise.
-    Retorna (pode_solicitar, proxima_disponivel_em, ultima_execucao, tem_trades_novos).
+    Administradores (is_staff ou is_superuser) não têm limite semanal.
+    Retorna (pode_solicitar, proxima_disponivel_em, ultima_execucao, tem_trades_novos, seven_days_passed).
     """
+    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        last_run_any = (
+            AIAnalyticsRun.objects.filter(user=user).order_by("-requested_at").first()
+        )
+        return (True, None, last_run_any, True, True)
+
     # Última execução que realmente gerou resultado (chamou LLM)
     last_run = (
         AIAnalyticsRun.objects.filter(user=user)

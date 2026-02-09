@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Mural – SMC Lab{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:0.5rem;">
+  <h1 style="margin:0;">Mural</h1>
+</div>
+<p style="color:#cbd5e1; font-size:14px; margin-bottom:1.5rem;">Últimos 40 trades compartilhados publicamente (com captura da operação).</p>
+
+{% if mural_trades %}
+<div style="overflow-x:auto;">
+  <table style="width:100%;border-collapse:collapse;min-width:720px;">
+    <thead>
+      <tr>
+        <th style="text-align:left;padding:0.5rem;border-bottom:1px solid #334155;">Trader</th>
+        <th style="text-align:left;padding:0.5rem;border-bottom:1px solid #334155;">Data</th>
+        <th style="text-align:left;padding:0.5rem;border-bottom:1px solid #334155;">Símbolo</th>
+        <th style="text-align:left;padding:0.5rem;border-bottom:1px solid #334155;">Mercado</th>
+        <th style="text-align:left;padding:0.5rem;border-bottom:1px solid #334155;">Direção</th>
+        <th style="text-align:left;padding:0.5rem;border-bottom:1px solid #334155;">Resultado</th>
+        <th style="text-align:right;padding:0.5rem;border-bottom:1px solid #334155;">P/L</th>
+        <th style="text-align:center;padding:0.5rem;border-bottom:1px solid #334155;">Captura</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in mural_trades %}
+      <tr>
+        <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ item.display_name }}</td>
+        <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ item.trade.executed_at|date:"d/m/Y H:i" }}</td>
+        <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ item.trade.symbol }}</td>
+        <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ item.trade.get_market_display }}</td>
+        <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ item.trade.get_direction_display }}</td>
+        <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ item.trade.get_result_type_display }}</td>
+        <td style="padding:0.5rem;text-align:right;border-bottom:1px solid #1e293b;">R$ {{ item.trade.profit_amount }}</td>
+        <td style="padding:0.5rem;text-align:center;border-bottom:1px solid #1e293b;">
+          <a href="{% url 'trades:trade_screenshot' item.trade.pk %}" target="_blank" rel="noopener" title="Ver captura" style="color:#38bdf8;">
+            <img src="{% url 'trades:trade_screenshot' item.trade.pk %}" alt="Captura" style="max-width:80px;max-height:50px;object-fit:contain;border-radius:6px;border:1px solid #334155;" />
+          </a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p style="color:#94a3b8;">Nenhum trade público com captura no momento.</p>
+{% endif %}
+
+{% endblock %}
