@@ -589,7 +589,7 @@ class AnalyticsIAView(PlanRequiredMixin, TemplateView):
             for r in hourly
         ]
 
-        # Gráfico por símbolo (top 10 por quantidade de trades)
+        # Gráfico por símbolo (até 20 ativos por quantidade de trades)
         symbol_top = (
             trades_qs.values("symbol")
             .annotate(
@@ -597,7 +597,7 @@ class AnalyticsIAView(PlanRequiredMixin, TemplateView):
                 gain=Coalesce(Sum("profit_amount", filter=Q(profit_amount__gt=0)), Decimal("0")),
                 loss=Coalesce(Sum("profit_amount", filter=Q(profit_amount__lt=0)), Decimal("0")),
             )
-            .order_by("-n")[:10]
+            .order_by("-n")[:20]
         )
         context["chart_symbol_data"] = [
             {

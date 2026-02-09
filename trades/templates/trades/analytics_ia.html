@@ -203,14 +203,14 @@
 </section>
 
 <section style="margin-bottom:2rem;">
-  <h2>Resultado por símbolo (até 10)</h2>
+  <h2>Resultado por símbolo (até 20)</h2>
   <p style="color:#cbd5e1; font-size:13px;">Símbolos com mais trades. Verde = ganhos, vermelha = perdas, azul = lucro.</p>
   <div style="max-width:900px; height:320px;"><canvas id="chart-by-symbol" height="240"></canvas></div>
 </section>
 
 <section style="margin-bottom:2rem;">
   <h2>Resultado por mercado</h2>
-  <p style="color:#cbd5e1; font-size:13px;">Cada gráfico: ganho (verde), perda (vermelho), lucro (azul).</p>
+  <p style="color:#cbd5e1; font-size:13px;">Cada gráfico: ganho (verde), perda (vermelho),</p>
   <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:1.5rem;">
     {% for m in chart_market_data %}
     <div><p style="margin:0 0 0.5rem; font-size:13px; color:#cbd5e1;">{{ m.market_label }}</p><canvas id="chart-market-{{ forloop.counter0 }}" height="140"></canvas></div>

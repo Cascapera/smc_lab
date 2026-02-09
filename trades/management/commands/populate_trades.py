@@ -77,12 +77,16 @@ def generate_trades(user, count=40):
             [ResultType.GAIN, ResultType.LOSS, ResultType.BREAK_EVEN],
             weights=[0.45, 0.35, 0.20],
         )[0]
+        # Ganho técnico na mesma unidade que resultado (reais), para Result/ Técnico fazer sentido
         if result == ResultType.GAIN:
             profit = Decimal(random.randint(50, 400))
-            technical = Decimal(str(round(random.uniform(1.0, 3.0), 2)))
+            # technical = quanto o mercado oferecia; entre 80% e 120% do profit para % razoável
+            ratio = Decimal(str(round(random.uniform(0.80, 1.20), 2)))
+            technical = (profit * ratio).quantize(Decimal("0.01"))
         elif result == ResultType.LOSS:
             profit = Decimal(-random.randint(40, 350))
-            technical = Decimal(str(round(-random.uniform(0.5, 2.5), 2)))
+            ratio = Decimal(str(round(random.uniform(0.80, 1.20), 2)))
+            technical = (profit * ratio).quantize(Decimal("0.01"))
         else:
             profit = Decimal("0")
             technical = Decimal("0.00")
