@@ -130,12 +130,17 @@ class TradeDeleteView(LoginRequiredMixin, View):
         return redirect(next_url or reverse("trades:dashboard"))
 
 
-class TradeScreenshotView(LoginRequiredMixin, View):
+class TradeScreenshotView(View):
+    """
+    Exibe a captura do trade. Dono sempre pode ver; trade público (mural) qualquer um pode ver.
+    """
     def get(self, request, pk: int):
-        trade = get_object_or_404(Trade, pk=pk, user=request.user)
+        trade = get_object_or_404(Trade, pk=pk)
         if not trade.screenshot:
             raise Http404("Captura não encontrada.")
-
+        is_owner = request.user.is_authenticated and trade.user_id == request.user.id
+        if not is_owner and not trade.is_public:
+            raise Http404("Captura não encontrada.")
         screenshot_file = trade.screenshot.open("rb")
         return FileResponse(screenshot_file, as_attachment=False)
 

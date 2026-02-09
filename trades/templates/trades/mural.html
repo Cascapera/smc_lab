@@ -10,39 +10,81 @@
 
 {% if mural_trades %}
 <div style="overflow-x:auto;">
-  <table style="width:100%;border-collapse:collapse;min-width:720px;">
-    <thead>
-      <tr>
-        <th style="text-align:left;padding:0.5rem;border-bottom:1px solid #334155;">Trader</th>
-        <th style="text-align:left;padding:0.5rem;border-bottom:1px solid #334155;">Data</th>
-        <th style="text-align:left;padding:0.5rem;border-bottom:1px solid #334155;">Símbolo</th>
-        <th style="text-align:left;padding:0.5rem;border-bottom:1px solid #334155;">Mercado</th>
-        <th style="text-align:left;padding:0.5rem;border-bottom:1px solid #334155;">Direção</th>
-        <th style="text-align:left;padding:0.5rem;border-bottom:1px solid #334155;">Resultado</th>
-        <th style="text-align:right;padding:0.5rem;border-bottom:1px solid #334155;">P/L</th>
-        <th style="text-align:center;padding:0.5rem;border-bottom:1px solid #334155;">Captura</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for item in mural_trades %}
-      <tr>
-        <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ item.display_name }}</td>
-        <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ item.trade.executed_at|date:"d/m/Y H:i" }}</td>
-        <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ item.trade.symbol }}</td>
-        <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ item.trade.get_market_display }}</td>
-        <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ item.trade.get_direction_display }}</td>
-        <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ item.trade.get_result_type_display }}</td>
-        <td style="padding:0.5rem;text-align:right;border-bottom:1px solid #1e293b;">R$ {{ item.trade.profit_amount }}</td>
-        <td style="padding:0.5rem;text-align:center;border-bottom:1px solid #1e293b;">
-          <a href="{% url 'trades:trade_screenshot' item.trade.pk %}" target="_blank" rel="noopener" title="Ver captura" style="color:#38bdf8;">
-            <img src="{% url 'trades:trade_screenshot' item.trade.pk %}" alt="Captura" style="max-width:80px;max-height:50px;object-fit:contain;border-radius:6px;border:1px solid #334155;" />
-          </a>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div style="border:1px solid #334155; border-radius:12px; background:#0b1220; padding:0.75rem;">
+    <table style="width:100%;border-collapse:collapse;table-layout:fixed;font-size:11px;">
+      <thead>
+        <tr>
+          <th style="text-align:left;padding:0.35rem;border-bottom:1px solid #334155;">Trader</th>
+          <th style="text-align:left;padding:0.35rem;border-bottom:1px solid #334155;">Data</th>
+          <th style="text-align:left;padding:0.35rem;border-bottom:1px solid #334155;">Símbolo</th>
+          <th style="text-align:left;padding:0.35rem;border-bottom:1px solid #334155;">Mercado</th>
+          <th style="text-align:left;padding:0.35rem;border-bottom:1px solid #334155;">Direção</th>
+          <th style="text-align:left;padding:0.35rem;border-bottom:1px solid #334155;">Setup</th>
+          <th style="text-align:left;padding:0.35rem;border-bottom:1px solid #334155;">Entrada</th>
+          <th style="text-align:left;padding:0.35rem;border-bottom:1px solid #334155;">HTF</th>
+          <th style="text-align:left;padding:0.35rem;border-bottom:1px solid #334155;">Região HTF</th>
+          <th style="text-align:left;padding:0.35rem;border-bottom:1px solid #334155;">Tendência</th>
+          <th style="text-align:left;padding:0.35rem;border-bottom:1px solid #334155;">Painel SMC</th>
+          <th style="text-align:left;padding:0.35rem;border-bottom:1px solid #334155;">Gatilho</th>
+          <th style="text-align:left;padding:0.35rem;border-bottom:1px solid #334155;">Parcial</th>
+          <th style="text-align:right;padding:0.35rem;border-bottom:1px solid #334155;">Resultado</th>
+          <th style="text-align:center;padding:0.35rem;border-bottom:1px solid #334155;">Captura</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in mural_trades %}
+        <tr>
+          <td style="padding:0.35rem;border-bottom:1px solid #1e293b;">{{ item.display_name }}</td>
+          <td style="padding:0.35rem;border-bottom:1px solid #1e293b;">{{ item.trade.executed_at|date:"d/m/Y H:i" }}</td>
+          <td style="padding:0.35rem;border-bottom:1px solid #1e293b;">{{ item.trade.symbol }}</td>
+          <td style="padding:0.35rem;border-bottom:1px solid #1e293b;">{{ item.trade.get_market_display }}</td>
+          <td style="padding:0.35rem;border-bottom:1px solid #1e293b;">{{ item.trade.get_direction_display }}</td>
+          <td data-colorize-cell="setup" data-value="{{ item.trade.setup }}" style="padding:0.35rem;border-bottom:1px solid #1e293b;">{{ item.trade.get_setup_display }}</td>
+          <td data-colorize-cell="entry" data-value="{{ item.trade.entry_type }}" style="padding:0.35rem;border-bottom:1px solid #1e293b;">{{ item.trade.get_entry_type_display }}</td>
+          <td data-colorize-cell="htf" data-value="{{ item.trade.high_time_frame }}" style="padding:0.35rem;border-bottom:1px solid #1e293b;">{{ item.trade.get_high_time_frame_display }}</td>
+          <td data-colorize-cell="region" data-value="{{ item.trade.region_htf }}" style="padding:0.35rem;border-bottom:1px solid #1e293b;">{{ item.trade.get_region_htf_display }}</td>
+          <td data-colorize-cell="trend" data-value="{{ item.trade.trend }}" style="padding:0.35rem;border-bottom:1px solid #1e293b;">{{ item.trade.get_trend_display }}</td>
+          <td data-colorize-cell="smc" data-value="{{ item.trade.smc_panel }}" style="padding:0.35rem;border-bottom:1px solid #1e293b;">{{ item.trade.get_smc_panel_display }}</td>
+          <td data-colorize-cell="trigger" data-value="{{ item.trade.trigger }}" style="padding:0.35rem;border-bottom:1px solid #1e293b;">{{ item.trade.get_trigger_display }}</td>
+          <td data-colorize-cell="partial" data-value="{{ item.trade.partial_trade }}" style="padding:0.35rem;border-bottom:1px solid #1e293b;">{{ item.trade.get_partial_trade_display }}</td>
+          <td data-colorize-cell="result" data-value="{{ item.trade.result_type }}" style="padding:0.35rem;text-align:right;border-bottom:1px solid #1e293b;">R$ {{ item.trade.profit_amount }}</td>
+          <td style="padding:0.35rem;text-align:center;border-bottom:1px solid #1e293b;">
+            <a href="{% url 'trades:trade_screenshot' item.trade.pk %}" target="_blank" rel="noopener" title="Ver captura" style="color:#38bdf8;">
+              <img src="{% url 'trades:trade_screenshot' item.trade.pk %}" alt="Captura" style="max-width:56px;max-height:36px;object-fit:contain;border-radius:4px;border:1px solid #334155;vertical-align:middle;" />
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const htfColors = { "5": { bg: "#ffe5a0", fg: "#0f172a" }, "15": { bg: "#d4edbc", fg: "#0f172a" }, "60": { bg: "#11734b", fg: "#f8fafc" }, "240": { bg: "#11734b", fg: "#f8fafc" } };
+    const trendColors = { bullish: { bg: "#11734b", fg: "#f8fafc" }, range: { bg: "#ffe5a0", fg: "#0f172a" }, bearish: { bg: "#b10202", fg: "#f8fafc" } };
+    const smcColors = { optimistic: { bg: "#11734b", fg: "#f8fafc" }, neutral: { bg: "#ffe5a0", fg: "#0f172a" }, pessimistic: { bg: "#b10202", fg: "#f8fafc" } };
+    const regionColors = { primary: { bg: "#11734b", fg: "#f8fafc" }, secondary: { bg: "#ffe5a0", fg: "#0f172a" }, none: { bg: "#b10202", fg: "#f8fafc" } };
+    const entryColors = { anticipated: { bg: "#b10202", fg: "#f8fafc" }, confirmed: { bg: "#11734b", fg: "#f8fafc" }, lateral: { bg: "#ffe5a0", fg: "#0f172a" } };
+    const setupColors = { flip: { bg: "#ffcfc9", fg: "#0f172a" }, choch: { bg: "#ffe5a0", fg: "#0f172a" }, continuation: { bg: "#11734b", fg: "#f8fafc" }, liquidity: { bg: "#11734b", fg: "#f8fafc" }, pd: { bg: "#e6cff2", fg: "#0f172a" }, fvg: { bg: "#ffc8aa", fg: "#0f172a" }, top_failure: { bg: "#e6cff2", fg: "#0f172a" }, bottom_failure: { bg: "#e6cff2", fg: "#0f172a" }, double_top: { bg: "#e6cff2", fg: "#0f172a" }, double_bottom: { bg: "#e6cff2", fg: "#0f172a" }, none: { bg: "#b10202", fg: "#f8fafc" }, wedge: { bg: "#ffcfc9", fg: "#0f172a" } };
+    const triggerColors = { region: { bg: "#d4edbc", fg: "#0f172a" }, passagem: { bg: "#11734b", fg: "#f8fafc" }, martelo_bf: { bg: "#ffc8aa", fg: "#0f172a" }, fffd: { bg: "#bfe1f6", fg: "#0f172a" }, padrao: { bg: "#e6cff2", fg: "#0f172a" }, none: { bg: "#b10202", fg: "#f8fafc" }, rocadinha: { bg: "#ffcfc9", fg: "#0f172a" }, barra_ignorada: { bg: "#ffe5a0", fg: "#0f172a" }, gift: { bg: "#ffc8aa", fg: "#0f172a" } };
+    const partialColors = { yes_pos: { bg: "#11734b", fg: "#f8fafc" }, yes_neg: { bg: "#d4edbc", fg: "#0f172a" }, no_done: { bg: "#11734b", fg: "#f8fafc" }, not_available: { bg: "#ffe5a0", fg: "#0f172a" } };
+    const resultColors = { gain: { bg: "#11734b", fg: "#f8fafc" }, loss: { bg: "#b10202", fg: "#f8fafc" }, break_even: { bg: "#ffe5a0", fg: "#0f172a" } };
+    function colorizeCell(el, map) {
+      const cfg = map[el.dataset.value];
+      if (cfg) { el.style.background = cfg.bg; el.style.color = cfg.fg; }
+    }
+    document.querySelectorAll('[data-colorize-cell="htf"]').forEach((c) => colorizeCell(c, htfColors));
+    document.querySelectorAll('[data-colorize-cell="region"]').forEach((c) => colorizeCell(c, regionColors));
+    document.querySelectorAll('[data-colorize-cell="trend"]').forEach((c) => colorizeCell(c, trendColors));
+    document.querySelectorAll('[data-colorize-cell="smc"]').forEach((c) => colorizeCell(c, smcColors));
+    document.querySelectorAll('[data-colorize-cell="entry"]').forEach((c) => colorizeCell(c, entryColors));
+    document.querySelectorAll('[data-colorize-cell="setup"]').forEach((c) => colorizeCell(c, setupColors));
+    document.querySelectorAll('[data-colorize-cell="trigger"]').forEach((c) => colorizeCell(c, triggerColors));
+    document.querySelectorAll('[data-colorize-cell="partial"]').forEach((c) => colorizeCell(c, partialColors));
+    document.querySelectorAll('[data-colorize-cell="result"]').forEach((c) => colorizeCell(c, resultColors));
+  });
+</script>
 {% else %}
 <p style="color:#94a3b8;">Nenhum trade público com captura no momento.</p>
 {% endif %}
