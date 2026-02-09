@@ -93,14 +93,16 @@
   }
   .grid{
     display:grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 12px 14px;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px 20px;
+    align-items: start;
   }
   .field{
     display:flex;
     flex-direction:column;
-    gap:6px;
+    gap: 6px;
     min-width: 0;
+    overflow: hidden;
   }
   .field a{
     display: inline-block;
@@ -116,15 +118,23 @@
     font-size: 13px;
     letter-spacing:.02em;
     color: var(--text);
+    flex-shrink: 0;
   }
   input, select, textarea{
-    width:100%;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     padding: 10px 12px;
     border-radius: 10px;
     border: 1px solid rgba(255,255,255,.14);
     background: rgba(0,0,0,.20);
     color: var(--text);
     font-size: 14px;
+  }
+  input:focus, select:focus, textarea:focus{
+    outline: none;
+    border-color: rgba(34,211,238,.5);
   }
   /* Harmoniza dropdown do select com o tema escuro */
   select option{

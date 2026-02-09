@@ -20,7 +20,7 @@
   <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between;">
     <div style="color:#e2e8f0;">
       <div style="font-weight:800; letter-spacing:.04em;">Solicitar análise</div>
-      <div style="color:#cbd5e1; font-size:13px;">As métricas são pré-calculadas; a IA responde apenas a perguntas específicas para otimizar uso de tokens. Só é possível nova análise após 7 dias da última e se houver novos trades registrados.</div>
+      <div style="color:#cbd5e1; font-size:13px;">A Inteligência Artificial, treinada com machine learning, analisa suas operações e entrega uma análise completa com insights valiosos para sua evolução como trader.<br>Só é possível nova análise após 7 dias da última e se houver novos trades registrados.</div>
     </div>
     <div>
       {% if ai_can_request %}
@@ -47,7 +47,7 @@
 {% endif %}
 
 <section style="margin-bottom:2rem;">
-  <h2>Trades por ganho (decrescente)</h2>
+  <h2>Principais trades:</h2>
   <p style="color:#cbd5e1; font-size:13px;">Tabela ordenada por resultado (maior ganho primeiro). Ganho/CT = ganho por contrato (Forex: por lote 0,01).</p>
   {% if analytics_trades_page %}
   <div style="overflow-x:auto; margin-top:1rem;">
@@ -80,16 +80,16 @@
           <td style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.symbol }}</td>
           <td style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_market_display }}</td>
           <td style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_direction_display }}</td>
-          <td style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_setup_display }}</td>
-          <td style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_entry_type_display }}</td>
-          <td style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_high_time_frame_display }}</td>
-          <td style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_region_htf_display }}</td>
-          <td style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_trend_display }}</td>
-          <td style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_smc_panel_display }}</td>
-          <td style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_trigger_display }}</td>
-          <td style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_partial_trade_display }}</td>
-          <td style="padding:0.4rem;text-align:right;border-bottom:1px solid #1e293b;">R$ {{ trade.profit_amount }}</td>
-          <td style="padding:0.4rem;text-align:right;border-bottom:1px solid #1e293b;">R$ {{ trade.ganho_ct|floatformat:2 }}</td>
+          <td data-colorize-cell="setup" data-value="{{ trade.setup }}" style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_setup_display }}</td>
+          <td data-colorize-cell="entry" data-value="{{ trade.entry_type }}" style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_entry_type_display }}</td>
+          <td data-colorize-cell="htf" data-value="{{ trade.high_time_frame }}" style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_high_time_frame_display }}</td>
+          <td data-colorize-cell="region" data-value="{{ trade.region_htf }}" style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_region_htf_display }}</td>
+          <td data-colorize-cell="trend" data-value="{{ trade.trend }}" style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_trend_display }}</td>
+          <td data-colorize-cell="smc" data-value="{{ trade.smc_panel }}" style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_smc_panel_display }}</td>
+          <td data-colorize-cell="trigger" data-value="{{ trade.trigger }}" style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_trigger_display }}</td>
+          <td data-colorize-cell="partial" data-value="{{ trade.partial_trade }}" style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_partial_trade_display }}</td>
+          <td data-colorize-cell="amount" data-value="{{ trade.profit_amount }}" style="padding:0.4rem;text-align:right;border-bottom:1px solid #1e293b;">R$ {{ trade.profit_amount }}</td>
+          <td data-colorize-cell="amount" data-value="{{ trade.ganho_ct }}" style="padding:0.4rem;text-align:right;border-bottom:1px solid #1e293b;">R$ {{ trade.ganho_ct|floatformat:2 }}</td>
           <td style="padding:0.4rem;text-align:center;border-bottom:1px solid #1e293b;">{% if trade.screenshot %}<a href="{% url 'trades:trade_screenshot' trade.pk %}" target="_blank" style="color:#38bdf8;">📷</a>{% else %}—{% endif %}</td>
         </tr>
         {% endfor %}
@@ -113,7 +113,6 @@
 
 <section style="margin-bottom:2rem;">
   <h2>Top 3 combinações que mais geram ganho</h2>
-  <p style="color:#cbd5e1; font-size:13px;">Mesmo Setup, Entrada, HTF, Região HTF, Tendência, Painel SMC, Gatilho e Parcial.</p>
   {% if top3_best_combos %}
   <div style="overflow-x:auto;">
     <table style="width:100%;border-collapse:collapse;font-size:12px;">
@@ -133,15 +132,15 @@
       <tbody>
         {% for row in top3_best_combos %}
         <tr>
-          <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.setup }}</td>
-          <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.entry_type }}</td>
-          <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.high_time_frame }}</td>
-          <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.region_htf }}</td>
-          <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.trend }}</td>
-          <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.smc_panel }}</td>
-          <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.trigger }}</td>
-          <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.partial_trade }}</td>
-          <td style="padding:0.5rem;text-align:right;border-bottom:1px solid #1e293b;">R$ {{ row.total }}</td>
+          <td data-colorize-cell="setup" data-value="{{ row.setup }}" style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.setup }}</td>
+          <td data-colorize-cell="entry" data-value="{{ row.entry_type }}" style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.entry_type }}</td>
+          <td data-colorize-cell="htf" data-value="{{ row.high_time_frame }}" style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.high_time_frame }}</td>
+          <td data-colorize-cell="region" data-value="{{ row.region_htf }}" style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.region_htf }}</td>
+          <td data-colorize-cell="trend" data-value="{{ row.trend }}" style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.trend }}</td>
+          <td data-colorize-cell="smc" data-value="{{ row.smc_panel }}" style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.smc_panel }}</td>
+          <td data-colorize-cell="trigger" data-value="{{ row.trigger }}" style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.trigger }}</td>
+          <td data-colorize-cell="partial" data-value="{{ row.partial_trade }}" style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.partial_trade }}</td>
+          <td data-colorize-cell="amount" data-value="{{ row.total }}" style="padding:0.5rem;text-align:right;border-bottom:1px solid #1e293b;">R$ {{ row.total }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -154,7 +153,6 @@
 
 <section style="margin-bottom:2rem;">
   <h2>Top 3 combinações que mais geram perda</h2>
-  <p style="color:#cbd5e1; font-size:13px;">Evite essas combinações para melhorar seu resultado.</p>
   {% if top3_worst_combos %}
   <div style="overflow-x:auto;">
     <table style="width:100%;border-collapse:collapse;font-size:12px;">
@@ -174,15 +172,15 @@
       <tbody>
         {% for row in top3_worst_combos %}
         <tr>
-          <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.setup }}</td>
-          <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.entry_type }}</td>
-          <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.high_time_frame }}</td>
-          <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.region_htf }}</td>
-          <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.trend }}</td>
-          <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.smc_panel }}</td>
-          <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.trigger }}</td>
-          <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.partial_trade }}</td>
-          <td style="padding:0.5rem;text-align:right;border-bottom:1px solid #1e293b;">R$ {{ row.total }}</td>
+          <td data-colorize-cell="setup" data-value="{{ row.setup }}" style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.setup }}</td>
+          <td data-colorize-cell="entry" data-value="{{ row.entry_type }}" style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.entry_type }}</td>
+          <td data-colorize-cell="htf" data-value="{{ row.high_time_frame }}" style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.high_time_frame }}</td>
+          <td data-colorize-cell="region" data-value="{{ row.region_htf }}" style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.region_htf }}</td>
+          <td data-colorize-cell="trend" data-value="{{ row.trend }}" style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.trend }}</td>
+          <td data-colorize-cell="smc" data-value="{{ row.smc_panel }}" style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.smc_panel }}</td>
+          <td data-colorize-cell="trigger" data-value="{{ row.trigger }}" style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.trigger }}</td>
+          <td data-colorize-cell="partial" data-value="{{ row.partial_trade }}" style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ row.labels.partial_trade }}</td>
+          <td data-colorize-cell="amount" data-value="{{ row.total }}" style="padding:0.5rem;text-align:right;border-bottom:1px solid #1e293b;">R$ {{ row.total }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -222,7 +220,6 @@
 
 <section style="margin-bottom:2rem;">
   <h2>Métricas disponíveis para análise</h2>
-  <p style="color:#cbd5e1; font-size:13px;">Resumo das métricas já calculadas (sem uso de IA). A IA utilizará esses dados para responder apenas às perguntas definidas.</p>
   {% with adv=advanced %}
   <div style="display:flex;flex-wrap:wrap;gap:1rem;margin-top:1rem;">
     <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:140px;">
@@ -254,13 +251,13 @@
 </section>
 
 <section style="margin-bottom:2rem;">
-  <h2>Resposta da IA</h2>
+  <h2>Resumo final :</h2>
   <div style="padding:1.5rem; border-radius:12px; border:1px solid #334155; background:rgba(15,23,42,0.6); color:#e2e8f0;">
     {% if ai_last_run and ai_last_run.result %}
       <div style="white-space:pre-wrap;">{{ ai_last_run.result|format_analytics_result }}</div>
       <p style="margin:1rem 0 0; color:#94a3b8; font-size:12px;">Análise de {{ ai_last_run.requested_at|date:"d/m/Y H:i" }}</p>
     {% else %}
-      <p style="margin:0; color:#94a3b8;">Aqui será exibida a análise gerada pela IA. Solicite uma análise quando o botão estiver disponível.</p>
+      <p style="margin:0; color:#94a3b8;">Aqui será exibido um resumo final da nova análise. Solicite uma nova análise quando o botão estiver disponível.</p>
     {% endif %}
   </div>
 </section>
@@ -354,6 +351,43 @@ document.addEventListener("DOMContentLoaded", function() {
       });
     });
   }
+});
+</script>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const htfColors = { "5": { bg: "#ffe5a0", fg: "#0f172a" }, "15": { bg: "#d4edbc", fg: "#0f172a" }, "60": { bg: "#11734b", fg: "#f8fafc" }, "240": { bg: "#11734b", fg: "#f8fafc" } };
+  const trendColors = { bullish: { bg: "#11734b", fg: "#f8fafc" }, range: { bg: "#ffe5a0", fg: "#0f172a" }, bearish: { bg: "#b10202", fg: "#f8fafc" } };
+  const smcColors = { optimistic: { bg: "#11734b", fg: "#f8fafc" }, neutral: { bg: "#ffe5a0", fg: "#0f172a" }, pessimistic: { bg: "#b10202", fg: "#f8fafc" } };
+  const regionColors = { primary: { bg: "#11734b", fg: "#f8fafc" }, secondary: { bg: "#ffe5a0", fg: "#0f172a" }, none: { bg: "#b10202", fg: "#f8fafc" } };
+  const entryColors = { anticipated: { bg: "#b10202", fg: "#f8fafc" }, confirmed: { bg: "#11734b", fg: "#f8fafc" }, lateral: { bg: "#ffe5a0", fg: "#0f172a" } };
+  const setupColors = { flip: { bg: "#ffcfc9", fg: "#0f172a" }, choch: { bg: "#ffe5a0", fg: "#0f172a" }, continuation: { bg: "#11734b", fg: "#f8fafc" }, liquidity: { bg: "#11734b", fg: "#f8fafc" }, pd: { bg: "#e6cff2", fg: "#0f172a" }, fvg: { bg: "#ffc8aa", fg: "#0f172a" }, top_failure: { bg: "#e6cff2", fg: "#0f172a" }, bottom_failure: { bg: "#e6cff2", fg: "#0f172a" }, double_top: { bg: "#e6cff2", fg: "#0f172a" }, double_bottom: { bg: "#e6cff2", fg: "#0f172a" }, none: { bg: "#b10202", fg: "#f8fafc" }, wedge: { bg: "#ffcfc9", fg: "#0f172a" } };
+  const triggerColors = { region: { bg: "#d4edbc", fg: "#0f172a" }, passagem: { bg: "#11734b", fg: "#f8fafc" }, martelo_bf: { bg: "#ffc8aa", fg: "#0f172a" }, fffd: { bg: "#bfe1f6", fg: "#0f172a" }, padrao: { bg: "#e6cff2", fg: "#0f172a" }, none: { bg: "#b10202", fg: "#f8fafc" }, rocadinha: { bg: "#ffcfc9", fg: "#0f172a" }, barra_ignorada: { bg: "#ffe5a0", fg: "#0f172a" }, gift: { bg: "#ffc8aa", fg: "#0f172a" } };
+  const partialColors = { yes_pos: { bg: "#11734b", fg: "#f8fafc" }, yes_neg: { bg: "#d4edbc", fg: "#0f172a" }, no_done: { bg: "#11734b", fg: "#f8fafc" }, not_available: { bg: "#ffe5a0", fg: "#0f172a" } };
+  const resultColors = { gain: { bg: "#11734b", fg: "#f8fafc" }, loss: { bg: "#b10202", fg: "#f8fafc" }, break_even: { bg: "#ffe5a0", fg: "#0f172a" } };
+  const amountPositive = { bg: "#11734b", fg: "#f8fafc" };
+  const amountNegative = { bg: "#b10202", fg: "#f8fafc" };
+
+  function colorizeCell(el, map) {
+    const cfg = map[el.dataset.value];
+    if (cfg) { el.style.background = cfg.bg; el.style.color = cfg.fg; }
+  }
+  function colorizeAmount(el) {
+    const v = parseFloat(String(el.dataset.value).replace(",", "."));
+    const cfg = (v >= 0 || isNaN(v)) ? amountPositive : amountNegative;
+    el.style.background = cfg.bg; el.style.color = cfg.fg;
+  }
+
+  document.querySelectorAll('[data-colorize-cell="htf"]').forEach((c) => colorizeCell(c, htfColors));
+  document.querySelectorAll('[data-colorize-cell="region"]').forEach((c) => colorizeCell(c, regionColors));
+  document.querySelectorAll('[data-colorize-cell="trend"]').forEach((c) => colorizeCell(c, trendColors));
+  document.querySelectorAll('[data-colorize-cell="smc"]').forEach((c) => colorizeCell(c, smcColors));
+  document.querySelectorAll('[data-colorize-cell="entry"]').forEach((c) => colorizeCell(c, entryColors));
+  document.querySelectorAll('[data-colorize-cell="setup"]').forEach((c) => colorizeCell(c, setupColors));
+  document.querySelectorAll('[data-colorize-cell="trigger"]').forEach((c) => colorizeCell(c, triggerColors));
+  document.querySelectorAll('[data-colorize-cell="partial"]').forEach((c) => colorizeCell(c, partialColors));
+  document.querySelectorAll('[data-colorize-cell="result"]').forEach((c) => colorizeCell(c, resultColors));
+  document.querySelectorAll('[data-colorize-cell="amount"]').forEach(colorizeAmount);
 });
 </script>
 {% endblock %}

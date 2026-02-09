@@ -73,6 +73,10 @@ class ProfileForm(forms.ModelForm):
             "last_reset_at",
             "created_at",
             "updated_at",
+            # Discord é preenchido ao vincular a conta depois do cadastro
+            "discord_user_id",
+            "discord_username",
+            "discord_connected_at",
         )
         widgets = {
             "phone": forms.TextInput(attrs={"placeholder": "(11) 99999-9999"}),
