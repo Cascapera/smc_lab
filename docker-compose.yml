@@ -1,6 +1,7 @@
 services:
   web:
     build: .
+    restart: unless-stopped
     command: gunicorn trader_portal.wsgi:application --bind 0.0.0.0:8000
     ports:
       - "8000:8000"
@@ -11,6 +12,7 @@ services:
 
   worker:
     build: .
+    restart: unless-stopped
     command: celery -A trader_portal worker -l info --pool=solo --concurrency=1
     env_file: .env
     depends_on:
@@ -19,6 +21,7 @@ services:
 
   beat:
     build: .
+    restart: unless-stopped
     command: celery -A trader_portal beat -l info
     env_file: .env
     depends_on:
@@ -27,11 +30,13 @@ services:
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     ports:
       - "6379:6379"
 
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-trader_portal}
       POSTGRES_USER: ${POSTGRES_USER:-trader_user}
