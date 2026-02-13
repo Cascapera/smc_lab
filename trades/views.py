@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import mimetypes
 from datetime import timedelta
 from decimal import Decimal
 
@@ -141,8 +142,16 @@ class TradeScreenshotView(View):
         is_owner = request.user.is_authenticated and trade.user_id == request.user.id
         if not is_owner and not trade.is_public:
             raise Http404("Captura não encontrada.")
-        screenshot_file = trade.screenshot.open("rb")
-        return FileResponse(screenshot_file, as_attachment=False)
+        try:
+            screenshot_file = trade.screenshot.open("rb")
+        except (FileNotFoundError, OSError, ValueError):
+            raise Http404("Captura não encontrada.")
+        content_type, _ = mimetypes.guess_type(trade.screenshot.name) or ("image/jpeg",)
+        return FileResponse(
+            screenshot_file,
+            as_attachment=False,
+            content_type=content_type,
+        )
 
 
 class MuralView(TemplateView):

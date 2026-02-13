@@ -5,6 +5,8 @@ services:
     command: gunicorn trader_portal.wsgi:application --bind 0.0.0.0:8000
     ports:
       - "8000:8000"
+    volumes:
+      - media_data:/app/media
     env_file: .env
     depends_on:
       - postgres
@@ -48,3 +50,4 @@ services:
 
 volumes:
   postgres_data:
+  media_data:
