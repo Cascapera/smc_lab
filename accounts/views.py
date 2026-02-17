@@ -3,6 +3,7 @@ from __future__ import annotations
 from django.contrib import messages
 from django.contrib.auth import logout
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.auth.models import User
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
@@ -10,7 +11,15 @@ from django.utils import timezone
 from django.views import View
 from django.views.generic import TemplateView
 
-from .forms import ProfileEditForm, ProfileForm, UserRegistrationForm
+from .forms import (
+    PasswordRecoveryByDataForm,
+    ProfileEditForm,
+    ProfileForm,
+    SetPasswordFormPT,
+    UserRegistrationForm,
+)
+
+SESSION_KEY_RECOVERY_USER = "password_recovery_user_id"
 
 
 class RegisterView(View):
@@ -101,6 +110,59 @@ class ProfileEditView(LoginRequiredMixin, View):
             messages.success(request, "Perfil atualizado com sucesso!")
             return redirect("accounts:profile")
         messages.error(request, "Por favor, corrija os erros abaixo.")
+        return render(request, self.template_name, {"form": form})
+
+
+class PasswordRecoveryByDataView(View):
+    """Recuperação de senha por e-mail, telefone e CPF."""
+
+    template_name = "accounts/password_recovery_by_data.html"
+
+    def get(self, request):
+        return render(request, self.template_name, {"form": PasswordRecoveryByDataForm()})
+
+    def post(self, request):
+        form = PasswordRecoveryByDataForm(request.POST)
+        if form.is_valid():
+            user = form.cleaned_data["_user"]
+            request.session[SESSION_KEY_RECOVERY_USER] = user.pk
+            return redirect("accounts:password_recovery_change")
+        return render(request, self.template_name, {"form": form})
+
+
+class PasswordRecoveryChangeView(View):
+    """Define nova senha após validação por dados."""
+
+    template_name = "accounts/password_recovery_change.html"
+
+    def get_user_from_session(self, request):
+        user_id = request.session.get(SESSION_KEY_RECOVERY_USER)
+        if not user_id:
+            return None
+        try:
+            return User.objects.get(pk=user_id)
+        except User.DoesNotExist:
+            return None
+
+    def get(self, request):
+        user = self.get_user_from_session(request)
+        if not user:
+            messages.error(request, "Sessão expirada. Solicite a recuperação novamente.")
+            return redirect("accounts:password_recovery")
+        form = SetPasswordFormPT(user)
+        return render(request, self.template_name, {"form": form})
+
+    def post(self, request):
+        user = self.get_user_from_session(request)
+        if not user:
+            messages.error(request, "Sessão expirada. Solicite a recuperação novamente.")
+            return redirect("accounts:password_recovery")
+        form = SetPasswordFormPT(user, request.POST)
+        if form.is_valid():
+            form.save()
+            del request.session[SESSION_KEY_RECOVERY_USER]
+            messages.success(request, "Senha alterada com sucesso! Faça login com a nova senha.")
+            return redirect("accounts:login")
         return render(request, self.template_name, {"form": form})
 
 

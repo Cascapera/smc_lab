@@ -1,4 +1,4 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 
 {% block content %}
 <h1>Entrar</h1>
@@ -20,5 +20,6 @@
     {% endif %}
     <button type="submit">Entrar</button>
 </form>
-<p>Ainda nãoo tem conta? <a href="{% url 'accounts:register' %}">Cadastre-se</a></p>
+<p><a href="{% url 'accounts:password_reset' %}">Esqueci minha senha</a></p>
+<p>Ainda não tem conta? <a href="{% url 'accounts:register' %}">Cadastre-se</a></p>
 {% endblock %}

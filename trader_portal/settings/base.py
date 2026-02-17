@@ -114,6 +114,29 @@ DATABASES = {
 DATABASES["default"]["ATOMIC_REQUESTS"] = True
 
 # --------------------------------------------------------------------------------------
+# Email (recuperação de senha e notificações) - GoDaddy SMTP
+# --------------------------------------------------------------------------------------
+EMAIL_HOST_USER = env("DJANGO_EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("DJANGO_EMAIL_HOST_PASSWORD", default="")
+_EMAIL_CREDENTIALS_SET = bool(EMAIL_HOST_USER and EMAIL_HOST_PASSWORD)
+
+EMAIL_BACKEND = env(
+    "DJANGO_EMAIL_BACKEND",
+    default=(
+        "django.core.mail.backends.smtp.EmailBackend"
+        if _EMAIL_CREDENTIALS_SET
+        else "django.core.mail.backends.console.EmailBackend"
+    ),
+)
+DEFAULT_FROM_EMAIL = env("DJANGO_DEFAULT_FROM_EMAIL", default="noreply@smclab.com.br")
+SERVER_EMAIL = env("DJANGO_SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
+
+# SMTP GoDaddy: smtpout.secureserver.net, porta 587, TLS
+EMAIL_HOST = env("DJANGO_EMAIL_HOST", default="smtpout.secureserver.net")
+EMAIL_PORT = env.int("DJANGO_EMAIL_PORT", default=587)
+EMAIL_USE_TLS = env.bool("DJANGO_EMAIL_USE_TLS", default=True)
+
+# --------------------------------------------------------------------------------------
 # Passwords & authentication
 # --------------------------------------------------------------------------------------
 
