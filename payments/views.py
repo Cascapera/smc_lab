@@ -31,7 +31,7 @@ from .services.mercadopago import (
 logger = logging.getLogger(__name__)
 
 
-class PlanListView(LoginRequiredMixin, TemplateView):
+class PlanListView(TemplateView):
     template_name = "payments/plans.html"
 
     def get_context_data(self, **kwargs):
