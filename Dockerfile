@@ -21,4 +21,4 @@ COPY . .
 # coletar estáticos para servir com Whitenoise
 RUN python manage.py collectstatic --noinput
 
-CMD ["gunicorn", "trader_portal.wsgi:application", "--bind", "0.0.0.0:8000"]
+CMD ["gunicorn", "trader_portal.wsgi:application", "-c", "gunicorn.conf.py", "--bind", "0.0.0.0:8000"]

@@ -32,6 +32,11 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool(
 )
 SECURE_HSTS_PRELOAD = env.bool("DJANGO_SECURE_HSTS_PRELOAD", default=True)
 
+# Middleware de timing para identificar requests lentos (>500ms)
+MIDDLEWARE = [
+    "trader_portal.middleware.RequestTimingMiddleware",
+] + MIDDLEWARE  # noqa: F405
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,

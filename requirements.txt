@@ -24,3 +24,7 @@ redis==5.0.8
 
 # Análise por IA (OpenAI GPT)
 openai==1.55.3
+
+# Dev/diagnóstico: performance e teste de carga
+django-debug-toolbar==4.4.6
+locust==2.32.4
