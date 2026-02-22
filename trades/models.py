@@ -263,3 +263,28 @@ class AIAnalyticsRun(models.Model):
 
     def __str__(self) -> str:
         return f"Análise IA – {self.user} em {self.requested_at:%Y-%m-%d %H:%M}"
+
+
+class GlobalAIAnalyticsRun(models.Model):
+    """
+    Registro de cada execução de análise por IA do dashboard global.
+    Usado pela equipe para analisar métricas agregadas de todos os usuários.
+    """
+
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="global_ai_analytics_runs",
+    )
+    requested_at = models.DateTimeField("solicitado em", auto_now_add=True)
+    result = models.TextField("resultado da análise", blank=True)
+
+    class Meta:
+        ordering = ("-requested_at",)
+        verbose_name = "execução análise IA global"
+        verbose_name_plural = "execuções análise IA global"
+
+    def __str__(self) -> str:
+        return f"Análise IA Global em {self.requested_at:%Y-%m-%d %H:%M}"

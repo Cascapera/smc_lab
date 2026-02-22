@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hmac
+import hashlib
 from dataclasses import dataclass
 from typing import Any
 
@@ -114,3 +116,50 @@ def extract_payment_id(query_params: dict[str, Any], payload: dict[str, Any]) ->
     if data_id:
         return str(data_id)
     return None
+
+
+def validate_webhook_signature(
+    x_signature: str | None,
+    x_request_id: str | None,
+    data_id: str | None,
+    secret: str,
+) -> bool:
+    """
+    Valida a assinatura x-signature do webhook MercadoPago.
+    Retorna True se a assinatura for válida ou se secret estiver vazio (skip).
+    Documentação: https://www.mercadopago.com.br/developers/en/docs/your-integrations/notifications/webhooks
+    """
+    if not secret or not secret.strip():
+        return True  # Skip validation quando secret não configurado (retrocompatível)
+
+    if not x_signature or not data_id:
+        return False
+
+    parts = [p.strip() for p in x_signature.split(",")]
+    ts = None
+    received_hash = None
+    for part in parts:
+        if "=" in part:
+            key, value = part.split("=", 1)
+            key, value = key.strip(), value.strip()
+            if key == "ts":
+                ts = value
+            elif key == "v1":
+                received_hash = value
+
+    if not ts or not received_hash:
+        return False
+
+    manifest_parts = [f"id:{str(data_id).lower() if data_id.isalnum() else data_id}"]
+    if x_request_id:
+        manifest_parts.append(f"request-id:{x_request_id}")
+    manifest_parts.append(f"ts:{ts}")
+    manifest = ";".join(manifest_parts) + ";"
+
+    expected_hash = hmac.new(
+        secret.encode(),
+        manifest.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+    return hmac.compare_digest(expected_hash, received_hash)

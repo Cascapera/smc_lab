@@ -57,6 +57,10 @@ class Payment(models.Model):
         verbose_name = "pagamento"
         verbose_name_plural = "pagamentos"
         ordering = ("-created_at",)
+        indexes = [
+            models.Index(fields=["mp_payment_id"]),
+            models.Index(fields=["external_reference"]),
+        ]
 
     def __str__(self) -> str:
         return f"{self.user} - {self.plan} - {self.status}"
@@ -94,6 +98,10 @@ class Subscription(models.Model):
         verbose_name = "assinatura"
         verbose_name_plural = "assinaturas"
         ordering = ("-created_at",)
+        indexes = [
+            models.Index(fields=["mp_preapproval_id"]),
+            models.Index(fields=["external_reference"]),
+        ]
 
     def __str__(self) -> str:
         return f"{self.user} - {self.plan_key} - {self.status}"

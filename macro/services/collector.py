@@ -26,6 +26,25 @@ def _iter_assets() -> Iterable[MacroAsset]:
 logger = logging.getLogger(__name__)
 
 
+def _compute_score_and_adjusted_variation(asset, variation_decimal: Optional[float]) -> tuple:
+    """
+    Calcula score (-1, 0 ou 1) e variação ajustada para um ativo.
+    Retorna (score, adjusted_variation).
+    """
+    direction = 1 if asset.value_base >= 0 else -1
+    adjusted_variation = (variation_decimal or 0.0) * direction
+    threshold = abs(asset.value_base)
+    if variation_decimal is None:
+        score = 0
+    elif adjusted_variation >= threshold:
+        score = 1
+    elif adjusted_variation <= -threshold:
+        score = -1
+    else:
+        score = 0
+    return score, adjusted_variation
+
+
 def _tradingview_window_open(measurement_time: datetime) -> bool:
     """Retorna True se a janela de coleta do TradingView estiver aberta (BRT)."""
     local_time = timezone.localtime(measurement_time)
@@ -100,19 +119,11 @@ def execute_cycle(measurement_time: Optional[datetime] = None) -> None:
                     )
                 )
 
-                direction = 1 if asset.value_base >= 0 else -1
-                adjusted_variation = (variation_decimal or 0.0) * direction
+                score, adjusted_variation = _compute_score_and_adjusted_variation(
+                    asset, variation_decimal
+                )
                 variation_sum += adjusted_variation
-
-                threshold = abs(asset.value_base)
-                if variation_decimal is None:
-                    scores.append(0)
-                elif adjusted_variation >= threshold:
-                    scores.append(1)
-                elif adjusted_variation <= -threshold:
-                    scores.append(-1)
-                else:
-                    scores.append(0)
+                scores.append(score)
                 continue
 
             outcome = fetch_html(asset)
@@ -163,19 +174,11 @@ def execute_cycle(measurement_time: Optional[datetime] = None) -> None:
                 )
             )
 
-            direction = 1 if asset.value_base >= 0 else -1
-            adjusted_variation = (variation_decimal or 0.0) * direction
+            score, adjusted_variation = _compute_score_and_adjusted_variation(
+                asset, variation_decimal
+            )
             variation_sum += adjusted_variation
-
-            threshold = abs(asset.value_base)
-            if variation_decimal is None:
-                scores.append(0)
-            elif adjusted_variation >= threshold:
-                scores.append(1)
-            elif adjusted_variation <= -threshold:
-                scores.append(-1)
-            else:
-                scores.append(0)
+            scores.append(score)
 
             delay_min, delay_max = config.FETCH_DELAY_RANGE
             time.sleep(random.uniform(delay_min, delay_max))

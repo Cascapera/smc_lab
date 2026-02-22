@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+import sys
 from decimal import Decimal
+from pathlib import Path
 
 import environ
 from celery.schedules import crontab
@@ -114,6 +115,21 @@ DATABASES = {
 DATABASES["default"]["ATOMIC_REQUESTS"] = True
 
 # --------------------------------------------------------------------------------------
+# Cache (rate limiting, etc.)
+# --------------------------------------------------------------------------------------
+# LocMemCache funciona para rate limiting em dev. Em produção com múltiplos workers,
+# considere Redis: django.core.cache.backends.redis.RedisCache
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "smc-default",
+    }
+}
+
+# django-ratelimit: desabilitado automaticamente ao rodar manage.py test
+RATELIMIT_ENABLE = "test" not in sys.argv and env.bool("RATELIMIT_ENABLE", default=True)
+
+# --------------------------------------------------------------------------------------
 # Email (recuperação de senha e notificações) - GoDaddy SMTP
 # --------------------------------------------------------------------------------------
 EMAIL_HOST_USER = env("DJANGO_EMAIL_HOST_USER", default="")
@@ -221,6 +237,7 @@ MERCADOPAGO_PUBLIC_KEY = env("MERCADOPAGO_PUBLIC_KEY", default="")
 MERCADOPAGO_CURRENCY = env("MERCADOPAGO_CURRENCY", default="BRL")
 MERCADOPAGO_BACK_URL = env("MERCADOPAGO_BACK_URL", default="")
 MERCADOPAGO_WEBHOOK_URL = env("MERCADOPAGO_WEBHOOK_URL", default="")
+MERCADOPAGO_WEBHOOK_SECRET = env("MERCADOPAGO_WEBHOOK_SECRET", default="")
 MERCADOPAGO_TEST_PAYER_EMAIL = env("MERCADOPAGO_TEST_PAYER_EMAIL", default="")
 MERCADOPAGO_TRIAL_DAYS = env.int("MERCADOPAGO_TRIAL_DAYS", default=7)
 MERCADOPAGO_PREMIUM_PLUS_MONTHLY_PRICE = env(

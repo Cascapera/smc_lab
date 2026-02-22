@@ -26,6 +26,7 @@ from .services.mercadopago import (
     extract_payment_id,
     fetch_payment,
     fetch_preapproval,
+    validate_webhook_signature,
 )
 
 logger = logging.getLogger(__name__)
@@ -219,8 +220,12 @@ class PaymentReturnView(LoginRequiredMixin, TemplateView):
                             preapproval,
                             subscription.plan,
                         )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.exception(
+                    "[payments] Erro ao processar preapproval %s no retorno: %s",
+                    preapproval_id,
+                    exc,
+                )
 
         payment_id = extract_payment_id(self.request.GET, {})
         if payment_id:
@@ -244,8 +249,12 @@ class PaymentReturnView(LoginRequiredMixin, TemplateView):
                     profile = Profile.objects.filter(user_id=user_id).first() if user_id else None
                     if profile:
                         _maybe_revoke_plan(profile)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.exception(
+                    "[payments] Erro ao processar payment %s no retorno: %s",
+                    payment_id,
+                    exc,
+                )
 
         context["status"] = status
         return context
@@ -259,6 +268,17 @@ class MercadoPagoWebhookView(View):
         except json.JSONDecodeError:
             payload = {}
 
+        data_id = extract_payment_id(request.GET, payload)
+        webhook_secret = getattr(settings, "MERCADOPAGO_WEBHOOK_SECRET", "") or ""
+        if data_id and webhook_secret:
+            x_signature = request.headers.get("x-signature")
+            x_request_id = request.headers.get("x-request-id")
+            if not validate_webhook_signature(
+                x_signature, x_request_id, data_id, webhook_secret
+            ):
+                logger.warning("[payments] Webhook assinatura inválida, rejeitando.")
+                return HttpResponse(status=401)
+
         topic = payload.get("type") or payload.get("topic") or request.GET.get("topic")
         if topic == "preapproval":
             preapproval_id = extract_payment_id(request.GET, payload)
@@ -267,7 +287,12 @@ class MercadoPagoWebhookView(View):
 
             try:
                 preapproval_data = fetch_preapproval(preapproval_id)
-            except Exception:
+            except Exception as exc:
+                logger.exception(
+                    "[payments] Erro ao buscar preapproval %s no webhook: %s",
+                    preapproval_id,
+                    exc,
+                )
                 return HttpResponse(status=200)
 
             status = preapproval_data.get("status", SubscriptionStatus.PENDING)
@@ -317,7 +342,12 @@ class MercadoPagoWebhookView(View):
 
         try:
             payment_data = fetch_payment(payment_id)
-        except Exception:
+        except Exception as exc:
+            logger.exception(
+                "[payments] Erro ao buscar payment %s no webhook: %s",
+                payment_id,
+                exc,
+            )
             return HttpResponse(status=200)
 
         status = payment_data.get("status", PaymentStatus.PENDING)
@@ -357,8 +387,8 @@ def _apply_plan(profile: Profile, plan_key: str, plan: str) -> None:
         from discord_integration.tasks import sync_user_roles
 
         sync_user_roles.delay(profile.user_id)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("[payments] sync_user_roles não disponível: %s", exc)
 
 
 def _get_plan_duration(plan_key: str) -> int:
@@ -381,8 +411,8 @@ def _maybe_revoke_plan(profile: Profile) -> None:
         from discord_integration.tasks import sync_user_roles
 
         sync_user_roles.delay(profile.user_id)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("[payments] sync_user_roles não disponível: %s", exc)
 
 
 def _schedule_plan_end(

@@ -123,7 +123,7 @@ class Profile(models.Model):
         "plano expira em",
         blank=True,
         null=True,
-        help_text="Defina para expirará automaticamente no dia especificado.",
+        help_text="Defina para expira automaticamente no dia especificado.",
     )
     last_reset_at = models.DateTimeField(
         "último reset",
@@ -178,4 +178,10 @@ class Profile(models.Model):
             Plan.PREMIUM: 2,
             Plan.PREMIUM_PLUS: 3,
         }
-        return rank[self.active_plan()] >= rank[required_plan]
+        user_rank = rank.get(self.active_plan(), -1)
+        required_rank = rank.get(required_plan, 999)
+        return user_rank >= required_rank
+
+    def get_active_plan_display(self) -> str:
+        """Retorna o label do plano vigente (considerando expiração)."""
+        return dict(Plan.choices).get(self.active_plan(), self.active_plan())

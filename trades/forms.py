@@ -48,6 +48,11 @@ class TradeForm(forms.ModelForm):
             smc_field.choices = [("", "Selecione")] + list(smc_field.choices)
             smc_field.initial = ""
 
+    def clean_symbol(self) -> str:
+        """Armazena ticker sempre em maiúsculas."""
+        symbol = self.cleaned_data.get("symbol", "")
+        return (symbol or "").strip().upper()
+
     def clean(self):
         cleaned_data = super().clean()
         if cleaned_data.get("is_public") is False:

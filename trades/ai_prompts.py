@@ -175,3 +175,79 @@ def get_analytics_rules_text(
     if not lines:
         return ""
     return "\n".join(lines).strip()
+
+
+def build_global_analytics_user_prompt(context: dict) -> str:
+    """
+    Monta o prompt para análise IA do dashboard global (todos os usuários).
+    Similar ao build_analytics_user_prompt, mas focado em métricas agregadas.
+    """
+    lines = [
+        "Dados agregados de TODOS os traders da plataforma (use APENAS estes dados para responder):",
+        "",
+    ]
+
+    lines.append("--- Top 3 combinações que mais geram GANHO (global) ---")
+    for i, row in enumerate(context.get("top3_best_combos") or [], 1):
+        labels = row.get("labels", {})
+        lines.append(
+            f"{i}. Setup: {labels.get('setup', 'N/D')}, Entrada: {labels.get('entry_type', 'N/D')}, "
+            f"HTF: {labels.get('high_time_frame', 'N/D')}, Região HTF: {labels.get('region_htf', 'N/D')}, "
+            f"Tendência: {labels.get('trend', 'N/D')}, Painel SMC: {labels.get('smc_panel', 'N/D')}, "
+            f"Gatilho: {labels.get('trigger', 'N/D')}, Parcial: {labels.get('partial_trade', 'N/D')} → Resultado: R$ {row.get('total', 0)}"
+        )
+    lines.append("")
+
+    lines.append("--- Top 3 combinações que mais geram PERDA (global) ---")
+    for i, row in enumerate(context.get("top3_worst_combos") or [], 1):
+        labels = row.get("labels", {})
+        lines.append(
+            f"{i}. Setup: {labels.get('setup', 'N/D')}, Entrada: {labels.get('entry_type', 'N/D')}, "
+            f"HTF: {labels.get('high_time_frame', 'N/D')}, Região HTF: {labels.get('region_htf', 'N/D')}, "
+            f"Tendência: {labels.get('trend', 'N/D')}, Painel SMC: {labels.get('smc_panel', 'N/D')}, "
+            f"Gatilho: {labels.get('trigger', 'N/D')}, Parcial: {labels.get('partial_trade', 'N/D')} → Resultado: R$ {row.get('total', 0)}"
+        )
+    lines.append("")
+
+    adv = context.get("advanced") or {}
+    lines.append("--- Métricas globais ---")
+    lines.append(
+        f"Total de trades: {adv.get('total_trades', 0)}, "
+        f"Win rate: {adv.get('win_rate', 'N/D')}%, "
+        f"Profit factor: {adv.get('profit_factor', 'N/D')}, "
+        f"Resultado acumulado: R$ {adv.get('total_profit', 0)}. "
+        f"Se evitar combinações negativas: melhora R$ {context.get('improvement_reais', 0)}, "
+        f"acumulado seria R$ {context.get('improvement_new_total', 0)}, "
+        f"melhora de {context.get('improvement_pct', 0)}%."
+    )
+    lines.append("")
+
+    lines.append("--- Perguntas (responda com base APENAS nos dados acima; use exatamente os títulos abaixo) ---")
+    lines.append("")
+    lines.append(
+        "1) Regra global: Em UMA FRASE, qual regra de decisão a comunidade deve seguir com base nas melhores e piores combinações?"
+    )
+    lines.append(
+        "2) Ponto forte da comunidade: Em UMA FRASE, qual o principal ponto forte observado nos dados?"
+    )
+    lines.append(
+        "3) Ponto fraco da comunidade: Em UMA FRASE, qual o principal ponto fraco que deve ser trabalhado?"
+    )
+    lines.append(
+        "4) Próximo passo: UMA ação prioritária concreta para a comunidade na próxima semana."
+    )
+    lines.append(
+        "5) Insights para live: 2 a 4 frases que podem ser usadas em transmissão ao vivo para espectadores, resumindo o desempenho geral."
+    )
+    lines.append("")
+    lines.append("--- Formato de saída (use exatamente estes títulos, na ordem) ---")
+    lines.append("")
+    lines.append("Regra global: [sua frase]")
+    lines.append("Ponto forte da comunidade: [sua frase]")
+    lines.append("Ponto fraco da comunidade: [sua frase]")
+    lines.append("Próximo passo: [sua frase]")
+    lines.append("")
+    lines.append("Insights para live:")
+    lines.append("[2 a 4 frases para espectadores]")
+
+    return "\n".join(lines)

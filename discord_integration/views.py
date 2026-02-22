@@ -42,7 +42,8 @@ class DiscordLoginView(LoginRequiredMixin, View):
             state = secrets.token_urlsafe(16)
             request.session["discord_oauth_state"] = state
             oauth_url = build_oauth_url(state)
-        except Exception:
+        except Exception as exc:
+            logger.exception("[discord] Erro ao iniciar OAuth: %s", exc)
             messages.error(request, "Discord não configurado. Tente novamente mais tarde.")
             return redirect(reverse("accounts:profile"))
 
@@ -66,7 +67,8 @@ class DiscordCallbackView(LoginRequiredMixin, View):
             token_data = exchange_code_for_token(code)
             user_data = fetch_discord_user(token_data.get("access_token", ""))
         except Exception as exc:
-            messages.error(request, f"Erro ao conectar com o Discord. {exc}")
+            logger.exception("[discord] Erro ao conectar no callback (user_id=%s): %s", request.user.id, exc)
+            messages.error(request, "Erro ao conectar com o Discord. Tente novamente mais tarde.")
             return redirect(reverse("accounts:profile"))
 
         profile = Profile.objects.filter(user=request.user).first()
@@ -142,5 +144,5 @@ class DiscordUnlinkView(LoginRequiredMixin, View):
                 exc_info=True,
             )
 
-        messages.success(request, f"Discord desvinculado ({discord_id}).")
+        messages.success(request, "Discord desvinculado com sucesso.")
         return redirect(reverse("accounts:profile"))

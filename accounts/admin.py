@@ -30,6 +30,7 @@ class UserAdmin(BaseUserAdmin):
 
 @admin.register(Profile)
 class ProfileAdmin(admin.ModelAdmin):
+    list_select_related = ("user",)
     list_display = (
         "user",
         "plan",

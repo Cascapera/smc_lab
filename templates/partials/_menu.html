@@ -19,6 +19,9 @@
       {% if user.is_authenticated %}
         <div style="display:flex; gap:10px; align-items:center;">
           <a class="btn btn-primary" href="{% url 'trades:dashboard' %}">Dashboard</a>
+          {% if user.is_staff or user.is_superuser %}
+          <a class="btn" href="{% url 'trades:dashboard_global' %}" title="Dashboard global (equipe)">Global</a>
+          {% endif %}
           <a class="btn" href="{% url 'trades:trade_add' %}">Novo Trade</a>
           <a class="btn" href="{% url 'accounts:profile' %}">Perfil</a>
           <a class="btn" href="{% url 'accounts:logout' %}">Sair</a>
