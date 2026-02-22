@@ -299,12 +299,14 @@ def _can_request_ai_analysis(user):
 class AdvancedDashboardView(PlanRequiredMixin, TemplateView):
     template_name = "trades/dashboard_advanced.html"
     required_plan = Plan.PREMIUM
-    insufficient_message = mark_safe(
-        "O Dashboard Avançado é exclusivo para o plano Premium. "
-        f'Assine em <a href="{reverse("payments:plans")}">Planos</a> '
-        'ou entre em contato pelo '
-        '<a href="https://wa.me/5511975743767" target="_blank" rel="noopener">WhatsApp</a>.'
-    )
+
+    def get_insufficient_message(self):
+        return mark_safe(
+            "O Dashboard Avançado é exclusivo para o plano Premium. "
+            f'Assine em <a href="{reverse("payments:plans")}">Planos</a> '
+            'ou entre em contato pelo '
+            '<a href="https://wa.me/5511975743767" target="_blank" rel="noopener">WhatsApp</a>.'
+        )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -433,12 +435,14 @@ class AnalyticsIAView(PlanRequiredMixin, TemplateView):
     """
     template_name = "trades/analytics_ia.html"
     required_plan = Plan.PREMIUM
-    insufficient_message = mark_safe(
-        "A análise por IA é exclusiva para planos Premium e Premium+. "
-        f'Assine em <a href="{reverse("payments:plans")}">Planos</a> '
-        'ou entre em contato pelo '
-        '<a href="https://wa.me/5511975743767" target="_blank" rel="noopener">WhatsApp</a>.'
-    )
+
+    def get_insufficient_message(self):
+        return mark_safe(
+            "A análise por IA é exclusiva para planos Premium e Premium+. "
+            f'Assine em <a href="{reverse("payments:plans")}">Planos</a> '
+            'ou entre em contato pelo '
+            '<a href="https://wa.me/5511975743767" target="_blank" rel="noopener">WhatsApp</a>.'
+        )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

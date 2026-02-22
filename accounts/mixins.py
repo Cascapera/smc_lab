@@ -24,26 +24,34 @@ class StaffRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
         return redirect(reverse("trades:dashboard"))
 
 
-class PlanRequiredMixin(LoginRequiredMixin):
-    """Protege views por plano (free/basic/premium/premium_plus)."""
-
-    required_plan: str = Plan.BASIC
-    insufficient_message = mark_safe(
+def _get_insufficient_plan_message():
+    """Mensagem lazy para evitar reverse() no carregamento do módulo (import circular)."""
+    return mark_safe(
         'Recurso disponível apenas para os planos Basic, Premium e Premium+. '
         f'Assine um plano em <a href="{reverse("payments:plans")}">Planos</a> '
         'ou fale pelo <a href="https://wa.me/5511975743767" target="_blank" rel="noopener">'
         "WhatsApp</a>."
     )
 
+
+class PlanRequiredMixin(LoginRequiredMixin):
+    """Protege views por plano (free/basic/premium/premium_plus)."""
+
+    required_plan: str = Plan.BASIC
+
     def get_required_plan(self) -> str:
         return self.required_plan
+
+    def get_insufficient_message(self):
+        """Subclasses podem sobrescrever para mensagem customizada (evitar reverse no load)."""
+        return _get_insufficient_plan_message()
 
     def handle_no_permission(self):
         # Delega para LoginRequiredMixin quando não autenticado
         if not self.request.user.is_authenticated:
             return super().handle_no_permission()
 
-        messages.warning(self.request, self.insufficient_message)
+        messages.warning(self.request, self.get_insufficient_message())
         return redirect(reverse("trades:dashboard"))
 
     def dispatch(self, request, *args, **kwargs):
@@ -71,7 +79,7 @@ def plan_required(required_plan: str = Plan.BASIC):
 
             messages.warning(
                 request,
-                PlanRequiredMixin.insufficient_message,
+                _get_insufficient_plan_message(),
             )
             return redirect(reverse("trades:dashboard"))
 

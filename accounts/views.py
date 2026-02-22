@@ -29,7 +29,7 @@ def _rate_limit_exceeded(request):
 
 
 @method_decorator(
-    ratelimit(key="ip", rate="5/m", method="POST", fn=_rate_limit_exceeded),
+    ratelimit(key="ip", rate="5/m", method="POST", block=False),
     name="post",
 )
 class LoginView(DjangoLoginView):
@@ -37,6 +37,11 @@ class LoginView(DjangoLoginView):
 
     template_name = "accounts/login.html"
     authentication_form = EmailAuthenticationForm
+
+    def post(self, request, *args, **kwargs):
+        if getattr(request, "limited", False):
+            return _rate_limit_exceeded(request)
+        return super().post(request, *args, **kwargs)
 
 
 class RegisterView(View):
@@ -54,9 +59,11 @@ class RegisterView(View):
         )
 
     @method_decorator(
-        ratelimit(key="ip", rate="3/m", method="POST", fn=_rate_limit_exceeded),
+        ratelimit(key="ip", rate="3/m", method="POST", block=False),
     )
     def post(self, request):
+        if getattr(request, "limited", False):
+            return _rate_limit_exceeded(request)
         user_form = UserRegistrationForm(request.POST)
         profile_form = ProfileForm(request.POST)
 
