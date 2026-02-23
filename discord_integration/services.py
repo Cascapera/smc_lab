@@ -119,6 +119,7 @@ def _bot_headers() -> dict[str, str]:
     config = get_config()
     return {"Authorization": f"Bot {config.bot_token}"}
 
+
 def _bot_request(method: str, url: str, **kwargs: Any) -> requests.Response:
     while True:
         _discord_rate_limiter.wait()

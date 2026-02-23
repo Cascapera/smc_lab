@@ -1,16 +1,16 @@
 """
 Testes do app discord_integration - OAuth, services e views.
 """
+
 from unittest.mock import patch
 
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from accounts.models import Plan, Profile
+from accounts.models import Plan
 from accounts.tests import create_profile, create_user
 
 from .services import build_oauth_url, desired_role_for_plan, sync_profile_roles
-
 
 # ---------------------------------------------------------------------------
 # Services - build_oauth_url
@@ -123,9 +123,7 @@ class SyncProfileRolesTest(TestCase):
     @patch("discord_integration.services.add_role")
     @patch("discord_integration.services.remove_role")
     @patch("discord_integration.services.fetch_member_roles")
-    def test_adiciona_role_quando_premium_e_nao_tem(
-        self, mock_fetch, mock_remove, mock_add
-    ):
+    def test_adiciona_role_quando_premium_e_nao_tem(self, mock_fetch, mock_remove, mock_add):
         mock_fetch.return_value = []
         mock_add.return_value = None
         mock_remove.return_value = None
@@ -147,9 +145,7 @@ class SyncProfileRolesTest(TestCase):
     @patch("discord_integration.services.add_role")
     @patch("discord_integration.services.remove_role")
     @patch("discord_integration.services.fetch_member_roles")
-    def test_nao_faz_nada_quando_sem_discord_user_id(
-        self, mock_fetch, mock_remove, mock_add
-    ):
+    def test_nao_faz_nada_quando_sem_discord_user_id(self, mock_fetch, mock_remove, mock_add):
         self.profile.discord_user_id = ""
         self.profile.save()
 
@@ -220,9 +216,7 @@ class DiscordCallbackViewTest(TestCase):
         self.profile = self.user.profile
 
     def test_anonimo_redireciona_para_login(self):
-        response = self.client.get(
-            reverse("discord:callback") + "?state=abc&code=xyz"
-        )
+        response = self.client.get(reverse("discord:callback") + "?state=abc&code=xyz")
         self.assertEqual(response.status_code, 302)
 
     def test_state_invalido_redireciona_para_profile(self):
@@ -231,9 +225,7 @@ class DiscordCallbackViewTest(TestCase):
         session["discord_oauth_state"] = "expected_state"
         session.save()
 
-        response = self.client.get(
-            reverse("discord:callback") + "?state=wrong_state&code=xyz"
-        )
+        response = self.client.get(reverse("discord:callback") + "?state=wrong_state&code=xyz")
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse("accounts:profile"))
@@ -244,9 +236,7 @@ class DiscordCallbackViewTest(TestCase):
         session["discord_oauth_state"] = "expected_state"
         session.save()
 
-        response = self.client.get(
-            reverse("discord:callback") + "?state=expected_state"
-        )
+        response = self.client.get(reverse("discord:callback") + "?state=expected_state")
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse("accounts:profile"))
@@ -254,9 +244,7 @@ class DiscordCallbackViewTest(TestCase):
     @patch("discord_integration.views.sync_profile_roles")
     @patch("discord_integration.views.fetch_discord_user")
     @patch("discord_integration.views.exchange_code_for_token")
-    def test_callback_valido_salva_discord_no_perfil(
-        self, mock_exchange, mock_fetch, mock_sync
-    ):
+    def test_callback_valido_salva_discord_no_perfil(self, mock_exchange, mock_fetch, mock_sync):
         mock_exchange.return_value = {"access_token": "token"}
         mock_fetch.return_value = {
             "id": "discord_123",
@@ -270,8 +258,7 @@ class DiscordCallbackViewTest(TestCase):
 
         with patch("discord_integration.views.sync_user_roles"):
             response = self.client.get(
-                reverse("discord:callback")
-                + "?state=expected_state&code=valid_code"
+                reverse("discord:callback") + "?state=expected_state&code=valid_code"
             )
 
         self.assertEqual(response.status_code, 302)

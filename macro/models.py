@@ -28,9 +28,7 @@ class MacroAsset(models.Model):
 
 
 class MacroVariation(models.Model):
-    asset = models.ForeignKey(
-        MacroAsset, on_delete=models.CASCADE, related_name="variations"
-    )
+    asset = models.ForeignKey(MacroAsset, on_delete=models.CASCADE, related_name="variations")
     measurement_time = models.DateTimeField(db_index=True)
     variation_text = models.CharField(max_length=50, null=True, blank=True)
     variation_decimal = models.FloatField(null=True, blank=True)

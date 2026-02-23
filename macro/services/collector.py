@@ -67,7 +67,7 @@ def execute_cycle(measurement_time: Optional[datetime] = None) -> None:
     except Exception as exc:
         logger.error("[macro] Erro ao inicializar ciclo: %s", exc, exc_info=True)
         raise
-    
+
     label = measurement_time.strftime("%Y-%m-%d %H:%M")
     logger.info("[macro] Iniciando ciclo para %s", label)
 
@@ -75,9 +75,7 @@ def execute_cycle(measurement_time: Optional[datetime] = None) -> None:
     last_variations = {}
     if assets:
         last_qs = (
-            MacroVariation.objects.filter(
-                asset__in=assets, variation_decimal__isnull=False
-            )
+            MacroVariation.objects.filter(asset__in=assets, variation_decimal__isnull=False)
             .order_by("asset_id", "-measurement_time")
             .values(
                 "asset_id",
@@ -96,9 +94,8 @@ def execute_cycle(measurement_time: Optional[datetime] = None) -> None:
 
     for asset in assets:
         try:
-            if (
-                asset.source_key == SourceChoices.TRADINGVIEW
-                and not _tradingview_window_open(measurement_time)
+            if asset.source_key == SourceChoices.TRADINGVIEW and not _tradingview_window_open(
+                measurement_time
             ):
                 fallback = last_variations.get(asset.id)
                 variation_decimal = fallback["variation_decimal"] if fallback else None

@@ -7,7 +7,6 @@ from macro.services import config
 from macro.services.collector import execute_cycle
 from macro.services.utils import align_measurement_time, is_market_closed
 
-
 logger = logging.getLogger(__name__)
 
 

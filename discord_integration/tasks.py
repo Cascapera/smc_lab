@@ -3,6 +3,7 @@ import logging
 from celery import shared_task
 
 from accounts.models import Profile
+
 from .services import sync_profile_roles
 
 logger = logging.getLogger(__name__)

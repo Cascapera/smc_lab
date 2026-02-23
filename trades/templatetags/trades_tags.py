@@ -1,7 +1,9 @@
 """
 Template tags do app trades.
 """
+
 import re
+
 from django import template
 from django.utils.safestring import mark_safe
 
@@ -34,5 +36,7 @@ def format_analytics_result(value: str) -> str:
     for label in ANALYTICS_LABELS:
         # Linha que começa com o título (opcional espaços no início)
         pattern = re.compile(r"^(\s*)" + re.escape(label) + r"(\s*)(.*)$", re.MULTILINE)
-        escaped = pattern.sub(r'\1<strong style="color:#38bdf8;">' + label + r"</strong>\2\3", escaped)
+        escaped = pattern.sub(
+            r'\1<strong style="color:#38bdf8;">' + label + r"</strong>\2\3", escaped
+        )
     return mark_safe(escaped)

@@ -8,7 +8,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -18,7 +18,8 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import TemplateView
 
 from accounts.models import Profile
-from .models import Payment, PaymentStatus, Subscription, SubscriptionStatus
+
+from .models import PaymentStatus, Subscription, SubscriptionStatus
 from .services.mercadopago import (
     create_preapproval,
     create_preapproval_plan,
@@ -62,8 +63,6 @@ class CreateCheckoutView(LoginRequiredMixin, View):
         frequency = config["frequency"]
         frequency_type = config["frequency_type"]
         success_url = request.build_absolute_uri(reverse("payments:return"))
-        failure_url = request.build_absolute_uri(reverse("payments:return"))
-        pending_url = request.build_absolute_uri(reverse("payments:return"))
         notification_url = request.build_absolute_uri(reverse("payments:webhook"))
         public_back_url = settings.MERCADOPAGO_BACK_URL or success_url
         public_webhook_url = settings.MERCADOPAGO_WEBHOOK_URL or notification_url
@@ -209,7 +208,9 @@ class PaymentReturnView(LoginRequiredMixin, TemplateView):
                     subscription.raw_payload = preapproval
                     subscription.save(update_fields=["status", "raw_payload", "updated_at"])
                     if status == SubscriptionStatus.AUTHORIZED:
-                        _apply_plan(subscription.user.profile, subscription.plan_key, subscription.plan)
+                        _apply_plan(
+                            subscription.user.profile, subscription.plan_key, subscription.plan
+                        )
                     elif status in {
                         SubscriptionStatus.CANCELLED,
                         SubscriptionStatus.PAUSED,
@@ -236,12 +237,7 @@ class PaymentReturnView(LoginRequiredMixin, TemplateView):
                 user_id = metadata.get("user_id")
                 plan_key = metadata.get("plan_key")
                 plan = metadata.get("plan")
-                if (
-                    payment_status == PaymentStatus.APPROVED
-                    and user_id
-                    and plan_key
-                    and plan
-                ):
+                if payment_status == PaymentStatus.APPROVED and user_id and plan_key and plan:
                     profile = Profile.objects.filter(user_id=user_id).first()
                     if profile:
                         _apply_plan(profile, plan_key, plan)
@@ -273,9 +269,7 @@ class MercadoPagoWebhookView(View):
         if data_id and webhook_secret:
             x_signature = request.headers.get("x-signature")
             x_request_id = request.headers.get("x-request-id")
-            if not validate_webhook_signature(
-                x_signature, x_request_id, data_id, webhook_secret
-            ):
+            if not validate_webhook_signature(x_signature, x_request_id, data_id, webhook_secret):
                 logger.warning("[payments] Webhook assinatura inválida, rejeitando.")
                 return HttpResponse(status=401)
 
@@ -304,13 +298,16 @@ class MercadoPagoWebhookView(View):
 
             subscription = Subscription.objects.filter(mp_preapproval_id=preapproval_id).first()
             if not subscription and external_reference:
-                subscription = Subscription.objects.filter(external_reference=external_reference).first()
+                subscription = Subscription.objects.filter(
+                    external_reference=external_reference
+                ).first()
             if not subscription and user_id and plan_key and plan:
                 subscription = Subscription.objects.create(
                     user_id=user_id,
                     plan=plan,
                     plan_key=plan_key,
-                    amount=preapproval_data.get("auto_recurring", {}).get("transaction_amount") or 0,
+                    amount=preapproval_data.get("auto_recurring", {}).get("transaction_amount")
+                    or 0,
                     currency=preapproval_data.get("auto_recurring", {}).get("currency_id")
                     or settings.MERCADOPAGO_CURRENCY,
                 )
@@ -319,7 +316,9 @@ class MercadoPagoWebhookView(View):
                 subscription.mp_preapproval_id = preapproval_id
                 subscription.status = status
                 subscription.raw_payload = preapproval_data
-                subscription.save(update_fields=["mp_preapproval_id", "status", "raw_payload", "updated_at"])
+                subscription.save(
+                    update_fields=["mp_preapproval_id", "status", "raw_payload", "updated_at"]
+                )
 
                 if status == SubscriptionStatus.AUTHORIZED:
                     _apply_plan(subscription.user.profile, subscription.plan_key, subscription.plan)
@@ -351,7 +350,6 @@ class MercadoPagoWebhookView(View):
             return HttpResponse(status=200)
 
         status = payment_data.get("status", PaymentStatus.PENDING)
-        status_detail = payment_data.get("status_detail", "")
         external_reference = payment_data.get("external_reference", "")
         metadata = payment_data.get("metadata") or {}
         user_id = metadata.get("user_id")
@@ -360,9 +358,7 @@ class MercadoPagoWebhookView(View):
 
         subscription = None
         if user_id and plan_key and plan:
-            subscription = Subscription.objects.filter(
-                user_id=user_id, plan_key=plan_key
-            ).first()
+            subscription = Subscription.objects.filter(user_id=user_id, plan_key=plan_key).first()
 
         if status == PaymentStatus.APPROVED and subscription:
             _apply_plan(subscription.user.profile, subscription.plan_key, subscription.plan)
@@ -421,8 +417,8 @@ def _schedule_plan_end(
     next_payment_date = preapproval_data.get("next_payment_date")
     if not next_payment_date:
         auto_recurring = preapproval_data.get("auto_recurring") or {}
-        next_payment_date = (
-            auto_recurring.get("next_payment_date") or auto_recurring.get("end_date")
+        next_payment_date = auto_recurring.get("next_payment_date") or auto_recurring.get(
+            "end_date"
         )
 
     next_dt = _parse_mp_datetime(next_payment_date)
@@ -457,9 +453,7 @@ def _parse_mp_datetime(value: object | None) -> datetime | None:
     return None
 
 
-def _ensure_preapproval_plan(
-    plan_key: str, config: dict, currency: str, back_url: str
-) -> str:
+def _ensure_preapproval_plan(plan_key: str, config: dict, currency: str, back_url: str) -> str:
     existing = (
         Subscription.objects.filter(plan_key=plan_key)
         .exclude(mp_plan_id="")

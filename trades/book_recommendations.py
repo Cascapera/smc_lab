@@ -172,7 +172,9 @@ def get_book_recommendations_text(
         )
 
     if parts_black:
-        lines.append("No Livro The Black Book of Smart Money estude: " + "; ".join(parts_black) + ".")
+        lines.append(
+            "No Livro The Black Book of Smart Money estude: " + "; ".join(parts_black) + "."
+        )
     else:
         lines.append(
             "No Livro The Black Book of Smart Money estude os pontos indicados na sua análise (confira o conteúdo do livro)."

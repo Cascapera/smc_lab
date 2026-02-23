@@ -1,6 +1,7 @@
 """
 Testes do app trades - CRUD, analytics, forms, views e llm_service.
 """
+
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -10,7 +11,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from accounts.models import Plan, Profile
+from accounts.models import Plan
 from accounts.tests import create_profile, create_user
 
 from .analytics import (
@@ -248,9 +249,7 @@ class ComputeDrawdownSeriesTest(TestCase):
             {"balance": 900},
             {"balance": 950},
         ]
-        dd_series, max_dd, max_dd_pct = compute_drawdown_series(
-            balance_series, Decimal("1000")
-        )
+        dd_series, max_dd, max_dd_pct = compute_drawdown_series(balance_series, Decimal("1000"))
         self.assertEqual(len(dd_series), 4)
         # dd = balance - peak: 0 no pico, negativo quando abaixo
         self.assertEqual(dd_series[0], 0.0)  # 1100 = novo pico
@@ -276,9 +275,7 @@ class ComputeAdvancedMetricsTest(TestCase):
             "best_trade": 100,
             "worst_trade": 0,
         }
-        result = compute_advanced_metrics(
-            trades, balance_series, Decimal("1000"), base_summary
-        )
+        result = compute_advanced_metrics(trades, balance_series, Decimal("1000"), base_summary)
         self.assertEqual(result["profit_factor"], "N/D")
         self.assertEqual(result["longest_win_streak"], 1)
         self.assertEqual(result["longest_loss_streak"], 0)
@@ -367,24 +364,18 @@ class TradeUpdateViewTest(TestCase):
         self.trade = create_trade(self.user, symbol="PETR4")
 
     def test_anonimo_redireciona_para_login(self):
-        response = self.client.get(
-            reverse("trades:trade_edit", kwargs={"pk": self.trade.pk})
-        )
+        response = self.client.get(reverse("trades:trade_edit", kwargs={"pk": self.trade.pk}))
         self.assertEqual(response.status_code, 302)
 
     def test_owner_acessa_formulario_de_edicao(self):
         self.client.force_login(self.user)
-        response = self.client.get(
-            reverse("trades:trade_edit", kwargs={"pk": self.trade.pk})
-        )
+        response = self.client.get(reverse("trades:trade_edit", kwargs={"pk": self.trade.pk}))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["object"], self.trade)
 
     def test_outro_usuario_recebe_404(self):
         self.client.force_login(self.other_user)
-        response = self.client.get(
-            reverse("trades:trade_edit", kwargs={"pk": self.trade.pk})
-        )
+        response = self.client.get(reverse("trades:trade_edit", kwargs={"pk": self.trade.pk}))
         self.assertEqual(response.status_code, 404)
 
     def test_post_valido_atualiza_trade(self):
@@ -450,57 +441,39 @@ class TradeScreenshotViewTest(TestCase):
 
     def test_404_quando_trade_sem_screenshot(self):
         trade = create_trade(self.user)
-        response = self.client.get(
-            reverse("trades:trade_screenshot", kwargs={"pk": trade.pk})
-        )
+        response = self.client.get(reverse("trades:trade_screenshot", kwargs={"pk": trade.pk}))
         self.assertEqual(response.status_code, 404)
 
     def test_404_quando_trade_privado_e_usuario_nao_owner(self):
         trade = create_trade(self.user, is_public=False)
-        trade.screenshot = SimpleUploadedFile(
-            "test.png", MINIMAL_PNG, content_type="image/png"
-        )
+        trade.screenshot = SimpleUploadedFile("test.png", MINIMAL_PNG, content_type="image/png")
         trade.save()
         self.client.force_login(self.other_user)
-        response = self.client.get(
-            reverse("trades:trade_screenshot", kwargs={"pk": trade.pk})
-        )
+        response = self.client.get(reverse("trades:trade_screenshot", kwargs={"pk": trade.pk}))
         self.assertEqual(response.status_code, 404)
 
     def test_200_quando_trade_publico_e_usuario_anonimo(self):
         trade = create_trade(self.user, is_public=True)
-        trade.screenshot = SimpleUploadedFile(
-            "test.png", MINIMAL_PNG, content_type="image/png"
-        )
+        trade.screenshot = SimpleUploadedFile("test.png", MINIMAL_PNG, content_type="image/png")
         trade.save()
-        response = self.client.get(
-            reverse("trades:trade_screenshot", kwargs={"pk": trade.pk})
-        )
+        response = self.client.get(reverse("trades:trade_screenshot", kwargs={"pk": trade.pk}))
         self.assertEqual(response.status_code, 200)
         self.assertIn("image", response.get("Content-Type", ""))
 
     def test_200_quando_owner_acessa_screenshot(self):
         trade = create_trade(self.user, is_public=False)
-        trade.screenshot = SimpleUploadedFile(
-            "test.png", MINIMAL_PNG, content_type="image/png"
-        )
+        trade.screenshot = SimpleUploadedFile("test.png", MINIMAL_PNG, content_type="image/png")
         trade.save()
         self.client.force_login(self.user)
-        response = self.client.get(
-            reverse("trades:trade_screenshot", kwargs={"pk": trade.pk})
-        )
+        response = self.client.get(reverse("trades:trade_screenshot", kwargs={"pk": trade.pk}))
         self.assertEqual(response.status_code, 200)
 
     def test_200_quando_staff_acessa_trade_privado(self):
         trade = create_trade(self.user, is_public=False)
-        trade.screenshot = SimpleUploadedFile(
-            "test.png", MINIMAL_PNG, content_type="image/png"
-        )
+        trade.screenshot = SimpleUploadedFile("test.png", MINIMAL_PNG, content_type="image/png")
         trade.save()
         self.client.force_login(self.staff_user)
-        response = self.client.get(
-            reverse("trades:trade_screenshot", kwargs={"pk": trade.pk})
-        )
+        response = self.client.get(reverse("trades:trade_screenshot", kwargs={"pk": trade.pk}))
         self.assertEqual(response.status_code, 200)
 
 
@@ -525,7 +498,7 @@ class MuralViewTest(TestCase):
             "test.png", MINIMAL_PNG, content_type="image/png"
         )
         trade_public.save()
-        trade_private = create_trade(user, is_public=False, symbol="VALE3")
+        create_trade(user, is_public=False, symbol="VALE3")
         response = self.client.get(reverse("mural"))
         self.assertEqual(response.status_code, 200)
         mural_trades = response.context["mural_trades"]

@@ -87,11 +87,7 @@ def parse_investing_variation(html: str) -> Optional[str]:
 
 
 def _normalize_tradingview(text: str) -> str:
-    cleaned = (
-        text.replace("\u2212", "-")
-        .replace("\u00a0", "")
-        .strip()
-    )
+    cleaned = text.replace("\u2212", "-").replace("\u00a0", "").strip()
     if not cleaned.endswith("%"):
         cleaned = f"{cleaned}%"
     return cleaned

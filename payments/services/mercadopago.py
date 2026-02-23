@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import hmac
 import hashlib
+import hmac
 from dataclasses import dataclass
 from typing import Any
 

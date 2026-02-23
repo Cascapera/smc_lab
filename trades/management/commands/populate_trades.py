@@ -4,28 +4,29 @@ Uso: python manage.py populate_trades --user=USER
 USER pode ser: username, email ou ID (número).
 Se --user não for informado, usa o primeiro usuário do banco.
 """
-from decimal import Decimal
+
 import random
+from decimal import Decimal
 
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from accounts.models import User
 from trades.models import (
-    Trade,
-    Market,
+    Currency,
     Direction,
+    EntryType,
     HighTimeFrame,
-    Trend,
+    Market,
+    PartialTrade,
     PremiumDiscount,
     RegionHTF,
-    SMCPanel,
-    EntryType,
-    Setup,
-    Trigger,
-    PartialTrade,
     ResultType,
-    Currency,
+    Setup,
+    SMCPanel,
+    Trade,
+    Trend,
+    Trigger,
 )
 
 
@@ -99,9 +100,7 @@ def generate_trades(user, count=40):
         target_price = base_price + Decimal(random.randint(5, 25))
         stop_price = base_price - Decimal(random.randint(5, 20))
         currency = (
-            Currency.USD
-            if market in {Market.DOLLAR, Market.CRYPTO, Market.FOREX}
-            else Currency.BRL
+            Currency.USD if market in {Market.DOLLAR, Market.CRYPTO, Market.FOREX} else Currency.BRL
         )
         is_public = random.random() < 0.6
         display_anon = True if not is_public else (random.random() < 0.5)
@@ -163,18 +162,14 @@ class Command(BaseCommand):
         user = get_user(user_ident)
         if user is None:
             self.stderr.write(
-                self.style.ERROR(
-                    f"Nenhum usuário encontrado para: {user_ident or '(primeiro)'}"
-                )
+                self.style.ERROR(f"Nenhum usuário encontrado para: {user_ident or '(primeiro)'}")
             )
             return
         if not no_reset:
             profile = user.profile
             profile.reset_balance(Decimal("10000"))
             deleted, _ = Trade.objects.filter(user=user).delete()
-            self.stdout.write(
-                f"Saldo resetado para R$ 10.000 e {deleted} trade(s) removido(s)."
-            )
+            self.stdout.write(f"Saldo resetado para R$ 10.000 e {deleted} trade(s) removido(s).")
         generate_trades(user, count=count)
         total = Trade.objects.filter(user=user).count()
         self.stdout.write(

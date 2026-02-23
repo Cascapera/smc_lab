@@ -1,18 +1,18 @@
 import json
 import logging
+import random
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-import random
-import time
 from typing import Dict, Optional, Tuple
 
 import requests
 from django.conf import settings
 
+from macro.models import MacroAsset
 from macro.services import config
 from macro.services.parsers import parse_investing_variation, parse_tradingview_variation
-from macro.models import MacroAsset
 
 logger = logging.getLogger(__name__)
 
@@ -60,51 +60,63 @@ def _classify_playwright_error(exc: Exception) -> Tuple[str, str]:
     """
     error_msg = str(exc).lower()
     error_type = type(exc).__name__
-    
+
     # Bloqueio de IP/proxy
-    if any(keyword in error_msg for keyword in [
-        "err_aborted",
-        "err_connection_refused",
-        "err_connection_reset",
-        "err_connection_closed",
-        "net::err_",
-        "403",
-        "forbidden",
-        "blocked",
-        "access denied",
-        "frame was detached",
-    ]):
+    if any(
+        keyword in error_msg
+        for keyword in [
+            "err_aborted",
+            "err_connection_refused",
+            "err_connection_reset",
+            "err_connection_closed",
+            "net::err_",
+            "403",
+            "forbidden",
+            "blocked",
+            "access denied",
+            "frame was detached",
+        ]
+    ):
         return "playwright_ip_block", error_type
-    
+
     # Timeout
-    if any(keyword in error_msg for keyword in [
-        "timeout",
-        "timed out",
-        "waiting for",
-        "navigation timeout",
-    ]):
+    if any(
+        keyword in error_msg
+        for keyword in [
+            "timeout",
+            "timed out",
+            "waiting for",
+            "navigation timeout",
+        ]
+    ):
         return "playwright_timeout", error_type
-    
+
     # Erro de proxy
-    if any(keyword in error_msg for keyword in [
-        "proxy",
-        "tunnel",
-        "socks",
-        "proxy authentication",
-    ]):
+    if any(
+        keyword in error_msg
+        for keyword in [
+            "proxy",
+            "tunnel",
+            "socks",
+            "proxy authentication",
+        ]
+    ):
         return "playwright_proxy_error", error_type
-    
+
     # Erro de conexão/rede
-    if any(keyword in error_msg for keyword in [
-        "connection",
-        "network",
-        "dns",
-        "resolve",
-        "unreachable",
-        "no internet",
-    ]):
+    if any(
+        keyword in error_msg
+        for keyword in [
+            "connection",
+            "network",
+            "dns",
+            "resolve",
+            "unreachable",
+            "no internet",
+        ]
+    ):
         return "playwright_connection_error", error_type
-    
+
     # Erro genérico
     return "playwright_error", error_type
 
@@ -130,7 +142,9 @@ def _fetch_tradingview_playwright(asset: MacroAsset) -> FetchOutcome:
     try:
         from playwright.sync_api import sync_playwright  # type: ignore
     except ImportError:
-        return FetchOutcome(html=None, status="fetch_error", block_reason="playwright_not_installed")
+        return FetchOutcome(
+            html=None, status="fetch_error", block_reason="playwright_not_installed"
+        )
 
     try:
         with sync_playwright() as p:
@@ -160,14 +174,18 @@ def _fetch_investing_playwright(asset: MacroAsset) -> FetchOutcome:
     try:
         from playwright.sync_api import sync_playwright  # type: ignore
     except ImportError:
-        return FetchOutcome(html=None, status="fetch_error", block_reason="playwright_not_installed")
+        return FetchOutcome(
+            html=None, status="fetch_error", block_reason="playwright_not_installed"
+        )
 
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True, proxy=_get_playwright_proxy())
             user_agent = random.choice(config.USER_AGENTS)
             page = browser.new_page(user_agent=user_agent)
-            page.goto(asset.url, wait_until="domcontentloaded", timeout=config.PLAYWRIGHT_TIMEOUT_MS)
+            page.goto(
+                asset.url, wait_until="domcontentloaded", timeout=config.PLAYWRIGHT_TIMEOUT_MS
+            )
             if config.PLAYWRIGHT_WAIT_MS > 0:
                 page.wait_for_timeout(config.PLAYWRIGHT_WAIT_MS)
             html = page.content()
@@ -413,7 +431,9 @@ def _discover_investing_xhr_endpoint(asset: MacroAsset) -> Optional[Tuple[str, O
             user_agent = random.choice(config.USER_AGENTS)
             page = browser.new_page(user_agent=user_agent)
             page.on("response", handle_response)
-            page.goto(asset.url, wait_until="domcontentloaded", timeout=config.PLAYWRIGHT_TIMEOUT_MS)
+            page.goto(
+                asset.url, wait_until="domcontentloaded", timeout=config.PLAYWRIGHT_TIMEOUT_MS
+            )
             if config.PLAYWRIGHT_WAIT_MS > 0:
                 page.wait_for_timeout(config.PLAYWRIGHT_WAIT_MS)
             browser.close()
@@ -528,7 +548,10 @@ def fetch_html(asset: MacroAsset) -> FetchOutcome:
                         fallback_url, headers=headers, timeout=config.FETCH_TIMEOUT
                     )
                     response.raise_for_status()
-                    if "Just a moment" not in response.text and "Verify you are human" not in response.text:
+                    if (
+                        "Just a moment" not in response.text
+                        and "Verify you are human" not in response.text
+                    ):
                         return FetchOutcome(html=response.text, status="ok")
                     block_reason = "captcha"
                 except requests.RequestException:
@@ -542,7 +565,11 @@ def fetch_html(asset: MacroAsset) -> FetchOutcome:
             delay_min, delay_max = config.RETRY_BACKOFF_RANGE
             time.sleep(random.uniform(delay_min, delay_max))
 
-    if config.INVESTING_XHR_ENABLED and block_reason in ("fallback_error", "captcha", "fetch_error"):
+    if config.INVESTING_XHR_ENABLED and block_reason in (
+        "fallback_error",
+        "captcha",
+        "fetch_error",
+    ):
         discovery = _discover_investing_xhr_endpoint(asset)
         if discovery:
             xhr_url, body = discovery

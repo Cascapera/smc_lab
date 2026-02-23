@@ -18,6 +18,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+
+      - name: Instalar Ruff
+        run: pip install ruff
+
+      - name: Rodar Ruff (check)
+        run: ruff check .
+
+      - name: Rodar Ruff (format --check)
+        run: ruff format --check .
+
   test:
     name: Testes
     runs-on: ubuntu-latest

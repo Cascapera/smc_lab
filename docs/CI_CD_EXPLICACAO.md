@@ -222,13 +222,47 @@ Assim o CI roda só com Python e `pip`, sem Docker, PostgreSQL ou Redis.
 
 ---
 
+## Job de Lint (Ruff)
+
+O CI inclui um job de lint que roda em paralelo com os testes:
+
+```yaml
+lint:
+  name: Lint
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.13"
+        cache: "pip"
+    - run: pip install ruff
+    - run: ruff check .
+    - run: ruff format --check .
+```
+
+**O que faz:**
+- `ruff check`: verifica erros de estilo (pycodestyle, pyflakes, isort).
+- `ruff format --check`: verifica se o código está formatado (não altera, só checa).
+
+**Rodar localmente antes do push:**
+```bash
+pip install -r requirements-dev.txt   # ou: pip install ruff
+ruff check .
+ruff format .
+ruff check . --fix   # corrige o que for possível
+```
+
+**Configuração:** `pyproject.toml` — regras do Ruff (line-length, excludes, isort).
+
+---
+
 ## Próximos passos (opcional)
 
 Depois que o CI estiver estável, você pode adicionar:
 
-1. **Lint (Ruff/Black):** rodar formatação e lint no CI.
-2. **Cobertura de testes:** exigir X% de cobertura.
-3. **CD (Deploy):** após o CI passar, fazer deploy automático (ex: Lightsail, Railway).
+1. **Cobertura de testes:** exigir X% de cobertura.
+2. **CD (Deploy):** após o CI passar, fazer deploy automático (ex: Lightsail, Railway).
 
 ---
 
@@ -241,3 +275,149 @@ Push/PR → Checkout → Python 3.13 → pip install → manage.py check
                                                     ↓
                                             Verde = OK, Vermelho = Falhou
 ```
+
+---
+
+## Referência rápida: sintaxe YAML
+
+| Símbolo | Significado |
+|---------|-------------|
+| `key: value` | Par chave-valor |
+| `- item` | Item de lista |
+| `\|` | Bloco de texto multilinha (para `run`) |
+| `${{ expr }}` | Expressão do GitHub Actions |
+
+---
+
+## Blocos de código explicados (linha a linha)
+
+### Bloco 1: Cabeçalho e nome
+
+```yaml
+name: CI
+```
+
+- **`name`**: Nome do workflow (aparece na aba Actions).
+- **`CI`**: Pode ser qualquer texto descritivo.
+
+---
+
+### Bloco 2: Gatilhos
+
+```yaml
+on:
+  push:
+  pull_request:
+```
+
+- **`on`**: Define os eventos que disparam o workflow.
+- **`push`**: Sem `branches`, roda em qualquer push.
+- **`pull_request`**: Roda em qualquer PR (abertura ou novo commit).
+
+**Se quiser limitar a branches:**
+```yaml
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+```
+
+---
+
+### Bloco 3: Concorrência
+
+```yaml
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+```
+
+- **`group`**: Agrupa execuções. `github.workflow` = nome do workflow, `github.ref` = branch (ex: `refs/heads/feature/x`).
+- **`cancel-in-progress: true`**: Cancela execuções antigas quando uma nova do mesmo grupo começa.
+
+---
+
+### Bloco 4: Job e ambiente
+
+```yaml
+jobs:
+  test:
+    name: Testes
+    runs-on: ubuntu-latest
+```
+
+- **`jobs`**: Lista de jobs (tarefas) do workflow.
+- **`test`**: ID do job (usado em dependências entre jobs).
+- **`name`**: Nome exibido na interface.
+- **`runs-on`**: Sistema operacional da máquina virtual (`ubuntu-latest` = Ubuntu mais recente).
+
+**Outras opções de `runs-on`:** `windows-latest`, `macos-latest`, `macos-14`.
+
+---
+
+### Bloco 5: Steps — Checkout
+
+```yaml
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+```
+
+- **`steps`**: Lista de passos executados em ordem.
+- **`-`**: Início de cada step.
+- **`name`**: Título do step (aparece no log).
+- **`uses`**: Usa uma **action** (código reutilizável). `actions/checkout` é oficial do GitHub.
+- **`@v4`**: Versão da action (evita quebras em atualizações).
+
+---
+
+### Bloco 6: Steps — Setup Python
+
+```yaml
+      - name: Configurar Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+```
+
+- **`with`**: Parâmetros passados para a action.
+- **`python-version`**: Versão do Python (entre aspas quando tem ponto).
+- **`cache: "pip"`**: Ativa cache do pip (acelera `pip install` em execuções seguintes).
+
+---
+
+### Bloco 7: Steps — Comandos shell
+
+```yaml
+      - name: Instalar dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+```
+
+- **`run`**: Comandos executados no shell (bash no Ubuntu).
+- **`|`**: Permite múltiplas linhas. Cada linha é um comando.
+- **`python -m pip`**: Garante uso do pip do Python correto.
+
+---
+
+### Bloco 8: Steps — Variáveis de ambiente
+
+```yaml
+      - name: Verificar configuração (manage.py check)
+        env:
+          DJANGO_SETTINGS_MODULE: trader_portal.settings.ci
+        run: python manage.py check
+```
+
+- **`env`**: Variáveis de ambiente disponíveis só neste step.
+- **`DJANGO_SETTINGS_MODULE`**: Django usa esse módulo de settings.
+- **`trader_portal.settings.ci`**: Settings específicos para CI (SQLite, sem Redis).
+
+---
+
+### Bloco 9: Ordem de execução
+
+Os steps rodam **em sequência**. Se um falhar, os seguintes não executam e o job falha.

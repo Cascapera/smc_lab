@@ -18,9 +18,7 @@ class UserAdmin(BaseUserAdmin):
     add_form = CustomUserCreationForm
     form = CustomUserChangeForm
     inlines = (ProfileInline,)
-    fieldsets = BaseUserAdmin.fieldsets + (
-        (_("Informações adicionais"), {"fields": ()}),
-    )
+    fieldsets = BaseUserAdmin.fieldsets + ((_("Informações adicionais"), {"fields": ()}),)
     add_fieldsets = BaseUserAdmin.add_fieldsets
     list_display = ("username", "email", "first_name", "last_name", "is_staff")
     list_select_related = ("profile",)

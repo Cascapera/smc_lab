@@ -91,9 +91,7 @@ class Profile(models.Model):
         blank=True,
         null=True,
     )
-    privacy_accepted = models.BooleanField(
-        "aceitou política de privacidade?", default=False
-    )
+    privacy_accepted = models.BooleanField("aceitou política de privacidade?", default=False)
     privacy_accepted_at = models.DateTimeField(
         "aceitado em",
         blank=True,
@@ -161,9 +159,7 @@ class Profile(models.Model):
         self.initial_balance = amount
         self.current_balance = amount
         self.last_reset_at = timezone.now()
-        self.save(
-            update_fields=["initial_balance", "current_balance", "last_reset_at"]
-        )
+        self.save(update_fields=["initial_balance", "current_balance", "last_reset_at"])
 
     def active_plan(self) -> str:
         """Retorna o plano vigente considerando data de expiração."""

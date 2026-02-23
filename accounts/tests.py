@@ -2,9 +2,9 @@
 Testes do app accounts - autenticação, perfis e registro.
 
 """
+
 from decimal import Decimal
 
-from django.contrib.auth import get_user_model
 from django.contrib.messages.middleware import MessageMiddleware
 from django.contrib.sessions.middleware import SessionMiddleware
 from django.test import RequestFactory, TestCase
@@ -20,7 +20,6 @@ from .models import (
     TradingStyle,
     User,
 )
-
 
 # ---------------------------------------------------------------------------
 # Factories / Fixtures
@@ -72,7 +71,9 @@ class UserModelTest(TestCase):
         self.assertEqual(str(user), "Maria Santos")
 
     def test_str_fallback_para_username_quando_sem_nome(self):
-        user = User.objects.create_user(username="anon@test.com", email="anon@test.com", password="x")
+        user = User.objects.create_user(
+            username="anon@test.com", email="anon@test.com", password="x"
+        )
         user.first_name = ""
         user.last_name = ""
         user.save()

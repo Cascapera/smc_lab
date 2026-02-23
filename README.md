@@ -135,6 +135,19 @@ Consulte `docs/env_production_template.txt` para um template completo.
 
 ---
 
+## Lint e formatação (Ruff)
+
+```bash
+pip install ruff
+ruff check .          # verifica
+ruff format .         # formata
+ruff check . --fix    # corrige o que for possível
+```
+
+Configuração em `pyproject.toml`.
+
+---
+
 ## Documentação adicional
 
 - **Deploy:** `docs/deploy_lightsail.md`

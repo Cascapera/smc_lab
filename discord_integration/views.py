@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.views import View
 
 from accounts.models import Profile
+
 from .services import (
     build_oauth_url,
     exchange_code_for_token,
@@ -67,7 +68,9 @@ class DiscordCallbackView(LoginRequiredMixin, View):
             token_data = exchange_code_for_token(code)
             user_data = fetch_discord_user(token_data.get("access_token", ""))
         except Exception as exc:
-            logger.exception("[discord] Erro ao conectar no callback (user_id=%s): %s", request.user.id, exc)
+            logger.exception(
+                "[discord] Erro ao conectar no callback (user_id=%s): %s", request.user.id, exc
+            )
             messages.error(request, "Erro ao conectar com o Discord. Tente novamente mais tarde.")
             return redirect(reverse("accounts:profile"))
 
@@ -83,9 +86,7 @@ class DiscordCallbackView(LoginRequiredMixin, View):
             username = f"{username}#{discriminator}"
         profile.discord_username = username
         profile.discord_connected_at = timezone.now()
-        profile.save(
-            update_fields=["discord_user_id", "discord_username", "discord_connected_at"]
-        )
+        profile.save(update_fields=["discord_user_id", "discord_username", "discord_connected_at"])
 
         try:
             sync_profile_roles(profile)

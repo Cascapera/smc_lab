@@ -40,6 +40,7 @@ def _decimal_env(name: str, default: str) -> Decimal:
     except Exception:
         return Decimal(default)
 
+
 # --------------------------------------------------------------------------------------
 # Core settings
 # --------------------------------------------------------------------------------------
@@ -204,9 +205,7 @@ SESSION_COOKIE_SECURE = env.bool("DJANGO_SESSION_COOKIE_SECURE", default=not DEB
 CSRF_COOKIE_SAMESITE = env("DJANGO_CSRF_COOKIE_SAMESITE", default="Lax")
 CSRF_COOKIE_DOMAIN = env("DJANGO_CSRF_COOKIE_DOMAIN", default=None)
 SESSION_COOKIE_DOMAIN = env("DJANGO_SESSION_COOKIE_DOMAIN", default=None)
-SECURE_PROXY_SSL_HEADER = env.tuple(
-    "DJANGO_SECURE_PROXY_SSL_HEADER", default=None
-) or None
+SECURE_PROXY_SSL_HEADER = env.tuple("DJANGO_SECURE_PROXY_SSL_HEADER", default=None) or None
 
 LOGIN_URL = "accounts:login"
 LOGIN_REDIRECT_URL = "/"
@@ -307,7 +306,6 @@ MERCADOPAGO_PLANS = {
         "duration_days": 90,
         "billing_type": "one_time",
     },
-
     "premium_plus_semiannual": {
         "plan": "premium_plus",
         "label": "Premium Plus Semestral",
@@ -316,7 +314,6 @@ MERCADOPAGO_PLANS = {
         "frequency_type": "months",
         "duration_days": 180,
         "billing_type": "one_time",
-        
     },
     "premium_plus_annual": {
         "plan": "premium_plus",
@@ -326,7 +323,6 @@ MERCADOPAGO_PLANS = {
         "frequency_type": "months",
         "duration_days": 365,
         "billing_type": "one_time",
-        
     },
     "premium_plus_test": {
         "plan": "premium_plus",

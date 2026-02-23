@@ -47,7 +47,9 @@ class Command(BaseCommand):
                 raw_cat = row["Categoria"]
                 if pd.notna(raw_cat):
                     category = str(raw_cat).strip()
-            source_key = SourceChoices.INVESTING if "investing.com" in url else SourceChoices.TRADINGVIEW
+            source_key = (
+                SourceChoices.INVESTING if "investing.com" in url else SourceChoices.TRADINGVIEW
+            )
 
             obj, is_created = MacroAsset.objects.update_or_create(
                 name=name,
@@ -65,5 +67,7 @@ class Command(BaseCommand):
                 updated += 1
 
         self.stdout.write(
-            self.style.SUCCESS(f"Importação concluída: {created} criados, {updated} atualizados (arquivo: {path})")
+            self.style.SUCCESS(
+                f"Importação concluída: {created} criados, {updated} atualizados (arquivo: {path})"
+            )
         )

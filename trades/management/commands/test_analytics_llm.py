@@ -3,6 +3,7 @@ Comando de teste: monta dados de exemplo, chama a LLM e monta o texto completo
 (resposta LLM + regras Result/Técnico e Win rate + bloco de livros).
 Uso: python manage.py test_analytics_llm
 """
+
 from __future__ import annotations
 
 import sys
@@ -162,7 +163,9 @@ class Command(BaseCommand):
 
         if not no_llm and not (getattr(settings, "OPENAI_API_KEY", "") or "").strip():
             self.stderr.write(
-                self.style.ERROR("OPENAI_API_KEY não está definida no .env. Use --no-llm para ver só regras + livros.")
+                self.style.ERROR(
+                    "OPENAI_API_KEY não está definida no .env. Use --no-llm para ver só regras + livros."
+                )
             )
             return
 
@@ -206,5 +209,7 @@ class Command(BaseCommand):
             result_text = (result_text or "") + "\n\n" + book_text
 
         self.stdout.write("")
-        self.stdout.write(self.style.MIGRATE_HEADING("========== TEXTO COMPLETO (como na tela) =========="))
+        self.stdout.write(
+            self.style.MIGRATE_HEADING("========== TEXTO COMPLETO (como na tela) ==========")
+        )
         self.stdout.write(result_text)

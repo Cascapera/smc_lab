@@ -27,7 +27,7 @@ class StaffRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
 def _get_insufficient_plan_message():
     """Mensagem lazy para evitar reverse() no carregamento do módulo (import circular)."""
     return mark_safe(
-        'Recurso disponível apenas para os planos Basic, Premium e Premium+. '
+        "Recurso disponível apenas para os planos Basic, Premium e Premium+. "
         f'Assine um plano em <a href="{reverse("payments:plans")}">Planos</a> '
         'ou fale pelo <a href="https://wa.me/5511975743767" target="_blank" rel="noopener">'
         "WhatsApp</a>."

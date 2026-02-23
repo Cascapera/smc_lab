@@ -75,7 +75,6 @@ class Setup(models.TextChoices):
     WEDGE = "wedge", "Cunha"
 
 
-
 class Trigger(models.TextChoices):
     REGION = "region", "Região"
     PASSAGEM = "passagem", "Passagem"
@@ -105,7 +104,6 @@ class Currency(models.TextChoices):
     BRL = "BRL", "Real"
     USD = "USD", "Dólar"
     EUR = "EUR", "Euro"
-    
 
 
 class Trade(models.Model):

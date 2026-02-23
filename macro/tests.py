@@ -1,6 +1,7 @@
 """
 Testes do app macro - utils, parsers, collector e views.
 """
+
 from datetime import datetime
 from unittest.mock import patch
 from urllib.parse import urlencode
@@ -16,7 +17,6 @@ from .models import MacroAsset, MacroScore, MacroVariation, SourceChoices
 from .services.collector import _compute_score_and_adjusted_variation, execute_cycle
 from .services.parsers import parse_investing_variation, parse_tradingview_variation
 from .services.utils import align_measurement_time, is_market_closed, parse_variation_percent
-
 
 # ---------------------------------------------------------------------------
 # Utils

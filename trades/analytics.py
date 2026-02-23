@@ -81,8 +81,16 @@ def compute_global_dashboard(trades_qs) -> dict[str, Any]:
 
     result_distribution = [
         {"label": "Gain", "count": wins, "percentage": round(win_rate, 2)},
-        {"label": "Loss", "count": losses, "percentage": round((losses / total_trades * 100) if total_trades else 0, 2)},
-        {"label": "Break even", "count": breakevens, "percentage": round((breakevens / total_trades * 100) if total_trades else 0, 2)},
+        {
+            "label": "Loss",
+            "count": losses,
+            "percentage": round((losses / total_trades * 100) if total_trades else 0, 2),
+        },
+        {
+            "label": "Break even",
+            "count": breakevens,
+            "percentage": round((breakevens / total_trades * 100) if total_trades else 0, 2),
+        },
     ]
 
     return {
@@ -142,11 +150,7 @@ def compute_profit_factor_payoff(
         if gross_loss and float(gross_loss) != 0
         else None
     )
-    payoff = (
-        float(avg_gain) / abs(float(avg_loss))
-        if avg_loss and float(avg_loss) != 0
-        else None
-    )
+    payoff = float(avg_gain) / abs(float(avg_loss)) if avg_loss and float(avg_loss) != 0 else None
     return profit_factor, payoff
 
 
@@ -194,15 +198,9 @@ def compute_advanced_metrics(
     avg_gain = gains.aggregate(avg=Coalesce(Avg("profit_amount"), Decimal("0")))["avg"]
     avg_loss = losses.aggregate(avg=Coalesce(Avg("profit_amount"), Decimal("0")))["avg"]
 
-    profit_factor, payoff = compute_profit_factor_payoff(
-        gross_gain, gross_loss, avg_gain, avg_loss
-    )
-    longest_win, longest_loss = compute_streaks(
-        trades_qs.values_list("profit_amount", flat=True)
-    )
-    dd_series, max_dd, max_dd_pct = compute_drawdown_series(
-        balance_series, initial_balance
-    )
+    profit_factor, payoff = compute_profit_factor_payoff(gross_gain, gross_loss, avg_gain, avg_loss)
+    longest_win, longest_loss = compute_streaks(trades_qs.values_list("profit_amount", flat=True))
+    dd_series, max_dd, max_dd_pct = compute_drawdown_series(balance_series, initial_balance)
 
     return {
         "profit_factor": round(profit_factor, 2) if profit_factor is not None else "N/D",
@@ -221,7 +219,9 @@ def compute_advanced_metrics(
     }
 
 
-def _aggregate_by(queryset, field: str, display_map: dict[str, str] | None = None) -> list[dict[str, Any]]:
+def _aggregate_by(
+    queryset, field: str, display_map: dict[str, str] | None = None
+) -> list[dict[str, Any]]:
     annotated = (
         queryset.values(field)
         .annotate(
@@ -338,7 +338,9 @@ def compute_user_dashboard(user) -> dict[str, Any]:
 
     # Se a série foi calculada, usar o último valor como saldo atual calculado
     computed_current_balance = (
-        balance_series[-1]["balance"] if balance_series else round(float(profile.current_balance), 2)
+        balance_series[-1]["balance"]
+        if balance_series
+        else round(float(profile.current_balance), 2)
     )
 
     by_market = _aggregate_by(trades, "market", dict(Market.choices))
@@ -347,8 +349,16 @@ def compute_user_dashboard(user) -> dict[str, Any]:
 
     result_distribution = [
         {"label": "Gain", "count": wins, "percentage": round(win_rate, 2)},
-        {"label": "Loss", "count": losses, "percentage": round((losses / total_trades * 100) if total_trades else 0, 2)},
-        {"label": "Break even", "count": breakevens, "percentage": round((breakevens / total_trades * 100) if total_trades else 0, 2)},
+        {
+            "label": "Loss",
+            "count": losses,
+            "percentage": round((losses / total_trades * 100) if total_trades else 0, 2),
+        },
+        {
+            "label": "Break even",
+            "count": breakevens,
+            "percentage": round((breakevens / total_trades * 100) if total_trades else 0, 2),
+        },
     ]
 
     return {
@@ -373,4 +383,3 @@ def compute_user_dashboard(user) -> dict[str, Any]:
         "by_entry_type": by_entry,
         "result_distribution": result_distribution,
     }
-

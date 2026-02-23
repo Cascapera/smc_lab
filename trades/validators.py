@@ -3,7 +3,6 @@ from __future__ import annotations
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 
-
 MAX_IMAGE_SIZE_MB = 1
 
 
@@ -18,4 +17,3 @@ def validate_image_file_size(image) -> None:
             _("A imagem deve ter no máximo %(limit)d MB."),
             params={"limit": MAX_IMAGE_SIZE_MB},
         )
-

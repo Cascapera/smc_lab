@@ -8,6 +8,7 @@ from django.utils import timezone
 
 from .models import Profile, User
 
+
 @receiver(post_save, sender=User)
 def create_or_update_profile(sender, instance: User, created: bool, **kwargs) -> None:
     if created:
@@ -26,4 +27,3 @@ def logout_other_sessions(sender, request, user: User, **kwargs) -> None:
         data = session.get_decoded()
         if data.get("_auth_user_id") == str(user.id) and session.session_key != current_key:
             session.delete()
-

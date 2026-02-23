@@ -21,7 +21,7 @@ def extract_relevant_text(html: str, max_chars: int = 6000) -> str:
     for tag in soup(["script", "style", "noscript"]):
         tag.decompose()
     lines = [line.strip() for line in soup.get_text(separator="\n").splitlines() if line.strip()]
-    keywords = ("%","Pre-Market","After Hours","After-Hours","Previous Close")
+    keywords = ("%", "Pre-Market", "After Hours", "After-Hours", "Previous Close")
     filtered = [line for line in lines if any(keyword in line for keyword in keywords)]
     if not filtered:
         filtered = lines[:120]

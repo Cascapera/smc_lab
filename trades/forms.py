@@ -58,4 +58,3 @@ class TradeForm(forms.ModelForm):
         if cleaned_data.get("is_public") is False:
             cleaned_data["display_as_anonymous"] = True
         return cleaned_data
-

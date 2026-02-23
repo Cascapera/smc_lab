@@ -147,7 +147,5 @@ def run_global_analytics_llm(context: dict) -> str:
     except AnalyticsLLMError:
         raise
     except Exception as e:
-        logger.exception(
-            "Erro inesperado ao chamar OpenAI para análise global por IA: %s", e
-        )
+        logger.exception("Erro inesperado ao chamar OpenAI para análise global por IA: %s", e)
         raise AnalyticsLLMError from e

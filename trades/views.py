@@ -7,34 +7,25 @@ from decimal import Decimal
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.paginator import Paginator
-from django.db.models import Avg, Case, Count, DecimalField, F, Q, Sum, Value, When
+from django.db.models import Case, Count, DecimalField, F, Q, Sum, Value, When
 from django.db.models.functions import Coalesce, ExtractHour
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
+from django.utils.safestring import mark_safe
 from django.views import View
 from django.views.generic import CreateView, TemplateView, UpdateView
 
 from accounts.mixins import PlanRequiredMixin, StaffRequiredMixin
 from accounts.models import Plan
-from django.utils.safestring import mark_safe
 
-
-def _mural_display_name(trade: Trade) -> str:
-    """Primeiro nome do usuário ou 'Anônimo' conforme preferência do trade."""
-    if trade.display_as_anonymous:
-        return "Anônimo"
-    name = trade.user.first_name or (trade.user.get_full_name() or "").strip()
-    if name:
-        return name.split()[0] if name.split() else "Anônimo"
-    return "Anônimo"
 from .analytics import (
+    _aggregate_by,
     compute_advanced_metrics,
     compute_drawdown_series,
     compute_global_dashboard,
     compute_user_dashboard,
-    _aggregate_by,
 )
 from .forms import TradeForm
 from .llm_service import AnalyticsLLMError
@@ -54,6 +45,16 @@ from .models import (
     Trend,
     Trigger,
 )
+
+
+def _mural_display_name(trade: Trade) -> str:
+    """Primeiro nome do usuário ou 'Anônimo' conforme preferência do trade."""
+    if trade.display_as_anonymous:
+        return "Anônimo"
+    name = trade.user.first_name or (trade.user.get_full_name() or "").strip()
+    if name:
+        return name.split()[0] if name.split() else "Anônimo"
+    return "Anônimo"
 
 
 class TradeCreateView(LoginRequiredMixin, CreateView):
@@ -87,9 +88,11 @@ class TradeCreateView(LoginRequiredMixin, CreateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["next_url"] = self.request.GET.get("next") or self.request.META.get(
-            "HTTP_REFERER"
-        ) or reverse("trades:dashboard")
+        context["next_url"] = (
+            self.request.GET.get("next")
+            or self.request.META.get("HTTP_REFERER")
+            or reverse("trades:dashboard")
+        )
         return context
 
 
@@ -121,9 +124,11 @@ class TradeUpdateView(LoginRequiredMixin, UpdateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["next_url"] = self.request.GET.get("next") or self.request.META.get(
-            "HTTP_REFERER"
-        ) or reverse("trades:dashboard")
+        context["next_url"] = (
+            self.request.GET.get("next")
+            or self.request.META.get("HTTP_REFERER")
+            or reverse("trades:dashboard")
+        )
         return context
 
     def get_success_url(self):
@@ -144,12 +149,15 @@ class TradeScreenshotView(View):
     Exibe a captura do trade. Dono sempre pode ver; trade público (mural) qualquer um pode ver;
     membros da equipe (is_staff) podem ver qualquer captura.
     """
+
     def get(self, request, pk: int):
         trade = get_object_or_404(Trade, pk=pk)
         if not trade.screenshot:
             raise Http404("Captura não encontrada.")
         is_owner = request.user.is_authenticated and trade.user_id == request.user.id
-        is_staff = getattr(request.user, "is_staff", False) or getattr(request.user, "is_superuser", False)
+        is_staff = getattr(request.user, "is_staff", False) or getattr(
+            request.user, "is_superuser", False
+        )
         if not is_owner and not trade.is_public and not is_staff:
             raise Http404("Captura não encontrada.")
         try:
@@ -166,6 +174,7 @@ class TradeScreenshotView(View):
 
 class MuralView(TemplateView):
     """Mural público: últimos 40 trades com imagem, is_public e usuário Basic+."""
+
     template_name = "trades/mural.html"
 
     def get_context_data(self, **kwargs):
@@ -182,9 +191,7 @@ class MuralView(TemplateView):
             .select_related("user")
             .order_by("-executed_at", "-id")[:40]
         )
-        context["mural_trades"] = [
-            {"trade": t, "display_name": _mural_display_name(t)} for t in qs
-        ]
+        context["mural_trades"] = [{"trade": t, "display_name": _mural_display_name(t)} for t in qs]
         return context
 
 
@@ -261,9 +268,7 @@ def _can_request_ai_analysis(user):
     Retorna (pode_solicitar, proxima_disponivel_em, ultima_execucao, tem_trades_novos, seven_days_passed).
     """
     if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
-        last_run_any = (
-            AIAnalyticsRun.objects.filter(user=user).order_by("-requested_at").first()
-        )
+        last_run_any = AIAnalyticsRun.objects.filter(user=user).order_by("-requested_at").first()
         return (True, None, last_run_any, True, True)
 
     # Última execução que realmente gerou resultado (chamou LLM)
@@ -274,17 +279,16 @@ def _can_request_ai_analysis(user):
         .first()
     )
     # Se não há run com resultado, usa qualquer última run para "next_available"
-    last_run_any = (
-        AIAnalyticsRun.objects.filter(user=user)
-        .order_by("-requested_at")
-        .first()
-    )
+    last_run_any = AIAnalyticsRun.objects.filter(user=user).order_by("-requested_at").first()
     ref_run = last_run or last_run_any
 
-    seven_days_passed = ref_run is None or (ref_run.requested_at + timedelta(days=7) <= timezone.now())
-    has_new_trades = ref_run is None or Trade.objects.filter(
-        user=user, executed_at__gt=ref_run.requested_at
-    ).exists()
+    seven_days_passed = ref_run is None or (
+        ref_run.requested_at + timedelta(days=7) <= timezone.now()
+    )
+    has_new_trades = (
+        ref_run is None
+        or Trade.objects.filter(user=user, executed_at__gt=ref_run.requested_at).exists()
+    )
 
     can_request = seven_days_passed and has_new_trades
     next_available = None
@@ -304,7 +308,7 @@ class AdvancedDashboardView(PlanRequiredMixin, TemplateView):
         return mark_safe(
             "O Dashboard Avançado é exclusivo para o plano Premium. "
             f'Assine em <a href="{reverse("payments:plans")}">Planos</a> '
-            'ou entre em contato pelo '
+            "ou entre em contato pelo "
             '<a href="https://wa.me/5511975743767" target="_blank" rel="noopener">WhatsApp</a>.'
         )
 
@@ -338,19 +342,11 @@ class AdvancedDashboardView(PlanRequiredMixin, TemplateView):
         context["by_entry_type"] = base.get("by_entry_type", [])
 
         # Tabelas por HTF, tendência, painel SMC, região HTF e gatilho
-        context["by_htf"] = _aggregate_by(
-            trades_qs, "high_time_frame", dict(HighTimeFrame.choices)
-        )
+        context["by_htf"] = _aggregate_by(trades_qs, "high_time_frame", dict(HighTimeFrame.choices))
         context["by_trend"] = _aggregate_by(trades_qs, "trend", dict(Trend.choices))
-        context["by_smc_panel"] = _aggregate_by(
-            trades_qs, "smc_panel", dict(SMCPanel.choices)
-        )
-        context["by_region_htf"] = _aggregate_by(
-            trades_qs, "region_htf", dict(RegionHTF.choices)
-        )
-        context["by_trigger"] = _aggregate_by(
-            trades_qs, "trigger", dict(Trigger.choices)
-        )
+        context["by_smc_panel"] = _aggregate_by(trades_qs, "smc_panel", dict(SMCPanel.choices))
+        context["by_region_htf"] = _aggregate_by(trades_qs, "region_htf", dict(RegionHTF.choices))
+        context["by_trigger"] = _aggregate_by(trades_qs, "trigger", dict(Trigger.choices))
 
         # Lista de trades com filtros avançados
         table_qs = Trade.objects.filter(user=self.request.user)
@@ -433,6 +429,7 @@ class AnalyticsIAView(PlanRequiredMixin, TemplateView):
     Limite: 1 solicitação por semana por usuário.
     Métricas são pré-calculadas; a IA responde apenas a perguntas específicas (economia de tokens).
     """
+
     template_name = "trades/analytics_ia.html"
     required_plan = Plan.PREMIUM
 
@@ -440,7 +437,7 @@ class AnalyticsIAView(PlanRequiredMixin, TemplateView):
         return mark_safe(
             "A análise por IA é exclusiva para planos Premium e Premium+. "
             f'Assine em <a href="{reverse("payments:plans")}">Planos</a> '
-            'ou entre em contato pelo '
+            "ou entre em contato pelo "
             '<a href="https://wa.me/5511975743767" target="_blank" rel="noopener">WhatsApp</a>.'
         )
 
@@ -467,7 +464,10 @@ class AnalyticsIAView(PlanRequiredMixin, TemplateView):
         # Tabela de trades ordenada por ganho (decrescente) com Ganho/CT e paginação
         trades_for_table = trades_qs.annotate(
             ganho_ct=Case(
-                When(market=Market.FOREX, then=F("profit_amount") * Value(Decimal("0.01")) / F("quantity")),
+                When(
+                    market=Market.FOREX,
+                    then=F("profit_amount") * Value(Decimal("0.01")) / F("quantity"),
+                ),
                 default=F("profit_amount") / F("quantity"),
                 output_field=DecimalField(),
             )
@@ -504,14 +504,20 @@ class AnalyticsIAView(PlanRequiredMixin, TemplateView):
             .order_by("-total")
         )
         top3_best_raw = list(combos[:3])
-        top3_worst_raw = list(trades_qs.values(*combo_fields).annotate(total=Coalesce(Sum("profit_amount"), Decimal("0"))).order_by("total")[:3])
+        top3_worst_raw = list(
+            trades_qs.values(*combo_fields)
+            .annotate(total=Coalesce(Sum("profit_amount"), Decimal("0")))
+            .order_by("total")[:3]
+        )
 
         def _combo_rows(raw_list):
             return [
                 {
                     **{f: row[f] for f in combo_fields},
                     "total": row["total"],
-                    "labels": {f: choice_maps[f].get(row[f], row[f] or "N/D") for f in combo_fields},
+                    "labels": {
+                        f: choice_maps[f].get(row[f], row[f] or "N/D") for f in combo_fields
+                    },
                 }
                 for row in raw_list
             ]
@@ -600,7 +606,9 @@ class AnalyticsIAView(PlanRequiredMixin, TemplateView):
                 }
             )
 
-        can_request, next_available, last_run, has_new_trades, seven_days_passed = _can_request_ai_analysis(user)
+        can_request, next_available, last_run, has_new_trades, seven_days_passed = (
+            _can_request_ai_analysis(user)
+        )
         context["ai_can_request"] = can_request
         context["ai_next_available"] = next_available
         context["ai_last_run"] = last_run
@@ -611,7 +619,9 @@ class AnalyticsIAView(PlanRequiredMixin, TemplateView):
         return context
 
     def post(self, request, *args, **kwargs):
-        can_request, next_available, last_run, has_new_trades, seven_days_passed = _can_request_ai_analysis(request.user)
+        can_request, next_available, last_run, has_new_trades, seven_days_passed = (
+            _can_request_ai_analysis(request.user)
+        )
         if not can_request:
             if not has_new_trades:
                 messages.warning(
@@ -628,6 +638,7 @@ class AnalyticsIAView(PlanRequiredMixin, TemplateView):
         # Contexto para a LLM (mesmo usado na página)
         context = self.get_context_data()
         from django.conf import settings as django_settings
+
         from .ai_prompts import get_analytics_rules_text
         from .book_recommendations import get_book_recommendations_text
         from .llm_service import run_analytics_llm
@@ -644,7 +655,8 @@ class AnalyticsIAView(PlanRequiredMixin, TemplateView):
 
             book_text = get_book_recommendations_text(
                 context.get("top3_worst_combos") or [],
-                url_smart_money_concept=getattr(django_settings, "BOOK_SMART_MONEY_CONCEPT_URL", "") or "",
+                url_smart_money_concept=getattr(django_settings, "BOOK_SMART_MONEY_CONCEPT_URL", "")
+                or "",
                 url_black_book=getattr(django_settings, "BOOK_BLACK_BOOK_URL", "") or "",
             )
             if book_text:
@@ -668,6 +680,7 @@ class GlobalDashboardView(StaffRequiredMixin, TemplateView):
     Dashboard global: todos os trades de todos os usuários.
     Acesso restrito à equipe (is_staff). Não exibe nome do trader.
     """
+
     template_name = "trades/dashboard_global.html"
 
     def get_context_data(self, **kwargs):
@@ -773,19 +786,19 @@ def _can_request_global_ai_analysis(user):
     if not (getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)):
         return False, None, None, False, False
 
-    last_run = (
-        GlobalAIAnalyticsRun.objects.exclude(result="")
-        .order_by("-requested_at")
-        .first()
+    last_run = GlobalAIAnalyticsRun.objects.exclude(result="").order_by("-requested_at").first()
+    seven_days_passed = last_run is None or (
+        last_run.requested_at + timedelta(days=7) <= timezone.now()
     )
-    seven_days_passed = last_run is None or (last_run.requested_at + timedelta(days=7) <= timezone.now())
     all_trades = Trade.objects.all()
-    has_new_trades = last_run is None or all_trades.filter(
-        executed_at__gt=last_run.requested_at
-    ).exists()
+    has_new_trades = (
+        last_run is None or all_trades.filter(executed_at__gt=last_run.requested_at).exists()
+    )
 
     can_request = seven_days_passed and has_new_trades
-    next_available = (last_run.requested_at + timedelta(days=7)) if last_run and not seven_days_passed else None
+    next_available = (
+        (last_run.requested_at + timedelta(days=7)) if last_run and not seven_days_passed else None
+    )
     return can_request, next_available, last_run, has_new_trades, seven_days_passed
 
 
@@ -793,6 +806,7 @@ class GlobalAnalyticsIAView(StaffRequiredMixin, TemplateView):
     """
     Análise por IA do dashboard global. Apenas equipe.
     """
+
     template_name = "trades/analytics_ia_global.html"
 
     def get_context_data(self, **kwargs):
@@ -811,8 +825,14 @@ class GlobalAnalyticsIAView(StaffRequiredMixin, TemplateView):
         context["by_entry_type"] = base.get("by_entry_type", [])
 
         combo_fields = [
-            "setup", "entry_type", "high_time_frame", "region_htf",
-            "trend", "smc_panel", "trigger", "partial_trade",
+            "setup",
+            "entry_type",
+            "high_time_frame",
+            "region_htf",
+            "trend",
+            "smc_panel",
+            "trigger",
+            "partial_trade",
         ]
         choice_maps = {
             "setup": dict(Setup.choices),
@@ -842,7 +862,9 @@ class GlobalAnalyticsIAView(StaffRequiredMixin, TemplateView):
                 {
                     **{f: row[f] for f in combo_fields},
                     "total": row["total"],
-                    "labels": {f: choice_maps[f].get(row[f], row[f] or "N/D") for f in combo_fields},
+                    "labels": {
+                        f: choice_maps[f].get(row[f], row[f] or "N/D") for f in combo_fields
+                    },
                 }
                 for row in raw_list
             ]
@@ -862,7 +884,10 @@ class GlobalAnalyticsIAView(StaffRequiredMixin, TemplateView):
 
         trades_for_table = trades_qs.annotate(
             ganho_ct=Case(
-                When(market=Market.FOREX, then=F("profit_amount") * Value(Decimal("0.01")) / F("quantity")),
+                When(
+                    market=Market.FOREX,
+                    then=F("profit_amount") * Value(Decimal("0.01")) / F("quantity"),
+                ),
                 default=F("profit_amount") / F("quantity"),
                 output_field=DecimalField(),
             )
@@ -881,7 +906,12 @@ class GlobalAnalyticsIAView(StaffRequiredMixin, TemplateView):
             .order_by("hour")
         )
         context["chart_hour_data"] = [
-            {"label": f"{r['hour']:02d}:00", "gain": float(r["gain"]), "loss": float(r["loss"]), "net": float(r["gain"]) + float(r["loss"])}
+            {
+                "label": f"{r['hour']:02d}:00",
+                "gain": float(r["gain"]),
+                "loss": float(r["loss"]),
+                "net": float(r["gain"]) + float(r["loss"]),
+            }
             for r in hourly
         ]
 
@@ -895,7 +925,12 @@ class GlobalAnalyticsIAView(StaffRequiredMixin, TemplateView):
             .order_by("-n")[:20]
         )
         context["chart_symbol_data"] = [
-            {"label": r["symbol"], "gain": float(r["gain"]), "loss": float(r["loss"]), "net": float(r["gain"]) + float(r["loss"])}
+            {
+                "label": r["symbol"],
+                "gain": float(r["gain"]),
+                "loss": float(r["loss"]),
+                "net": float(r["gain"]) + float(r["loss"]),
+            }
             for r in symbol_top
         ]
 
@@ -907,14 +942,18 @@ class GlobalAnalyticsIAView(StaffRequiredMixin, TemplateView):
                 loss=Coalesce(Sum("profit_amount", filter=Q(profit_amount__lt=0)), Decimal("0")),
             )
             total_m = float(agg["gain"]) + float(agg["loss"])
-            context["chart_market_data"].append({
-                "market_label": market_label,
-                "gain": float(agg["gain"]),
-                "loss": abs(float(agg["loss"])),
-                "net": total_m,
-            })
+            context["chart_market_data"].append(
+                {
+                    "market_label": market_label,
+                    "gain": float(agg["gain"]),
+                    "loss": abs(float(agg["loss"])),
+                    "net": total_m,
+                }
+            )
 
-        can_request, next_available, last_run, has_new_trades, seven_days_passed = _can_request_global_ai_analysis(self.request.user)
+        can_request, next_available, last_run, has_new_trades, seven_days_passed = (
+            _can_request_global_ai_analysis(self.request.user)
+        )
         context["ai_can_request"] = can_request
         context["ai_next_available"] = next_available
         context["ai_last_run"] = last_run
@@ -926,12 +965,19 @@ class GlobalAnalyticsIAView(StaffRequiredMixin, TemplateView):
         return context
 
     def post(self, request, *args, **kwargs):
-        can_request, next_available, last_run, has_new_trades, seven_days_passed = _can_request_global_ai_analysis(request.user)
+        can_request, next_available, last_run, has_new_trades, seven_days_passed = (
+            _can_request_global_ai_analysis(request.user)
+        )
         if not can_request:
             if not has_new_trades:
-                messages.warning(request, "Registre pelo menos um novo trade na plataforma para solicitar uma nova análise.")
+                messages.warning(
+                    request,
+                    "Registre pelo menos um novo trade na plataforma para solicitar uma nova análise.",
+                )
             else:
-                messages.warning(request, "A próxima análise poderá ser realizada após 7 dias da última.")
+                messages.warning(
+                    request, "A próxima análise poderá ser realizada após 7 dias da última."
+                )
             return redirect(reverse("trades:analytics_ia_global"))
 
         context = self.get_context_data()

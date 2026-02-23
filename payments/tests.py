@@ -1,8 +1,9 @@
 """
 Testes do app payments - MercadoPago, webhook, views.
 """
-import hmac
+
 import hashlib
+import hmac
 import json
 from decimal import Decimal
 from unittest.mock import patch
@@ -10,12 +11,10 @@ from unittest.mock import patch
 from django.test import TestCase
 from django.urls import reverse
 
-from accounts.models import Plan, Profile
-from accounts.tests import create_profile, create_user
+from accounts.tests import create_user
 
 from .models import Payment, PaymentStatus, Subscription, SubscriptionStatus
 from .services.mercadopago import extract_payment_id, validate_webhook_signature
-
 
 # ---------------------------------------------------------------------------
 # Services - extract_payment_id
@@ -51,19 +50,13 @@ class ValidateWebhookSignatureTest(TestCase):
     """Testes de validate_webhook_signature."""
 
     def test_retorna_true_quando_secret_vazio(self):
-        self.assertTrue(
-            validate_webhook_signature("ts=1,v1=abc", None, "123", "")
-        )
+        self.assertTrue(validate_webhook_signature("ts=1,v1=abc", None, "123", ""))
 
     def test_retorna_false_quando_x_signature_ausente(self):
-        self.assertFalse(
-            validate_webhook_signature(None, None, "123", "my_secret")
-        )
+        self.assertFalse(validate_webhook_signature(None, None, "123", "my_secret"))
 
     def test_retorna_false_quando_data_id_ausente(self):
-        self.assertFalse(
-            validate_webhook_signature("ts=1,v1=abc", None, None, "my_secret")
-        )
+        self.assertFalse(validate_webhook_signature("ts=1,v1=abc", None, None, "my_secret"))
 
     def test_valida_assinatura_correta(self):
         secret = "test_secret"
@@ -77,17 +70,11 @@ class ValidateWebhookSignatureTest(TestCase):
         ).hexdigest()
         x_signature = f"ts={ts},v1={expected_hash}"
 
-        self.assertTrue(
-            validate_webhook_signature(x_signature, None, data_id, secret)
-        )
+        self.assertTrue(validate_webhook_signature(x_signature, None, data_id, secret))
 
     def test_rejeita_assinatura_invalida(self):
         x_signature = "ts=1704908010,v1=invalid_hash"
-        self.assertFalse(
-            validate_webhook_signature(
-                x_signature, None, "12345", "my_secret"
-            )
-        )
+        self.assertFalse(validate_webhook_signature(x_signature, None, "12345", "my_secret"))
 
 
 # ---------------------------------------------------------------------------
@@ -117,9 +104,7 @@ class CreateCheckoutViewTest(TestCase):
         self.user = create_user()
 
     def test_anonimo_redireciona_para_login(self):
-        response = self.client.get(
-            reverse("payments:checkout", kwargs={"plan": "basic_monthly"})
-        )
+        response = self.client.get(reverse("payments:checkout", kwargs={"plan": "basic_monthly"}))
         self.assertEqual(response.status_code, 302)
         self.assertIn(reverse("accounts:login"), response.url)
 
@@ -159,9 +144,7 @@ class CreateCheckoutViewTest(TestCase):
         mock_settings.MERCADOPAGO_TRIAL_DAYS = 0
 
         self.client.force_login(self.user)
-        response = self.client.get(
-            reverse("payments:checkout", kwargs={"plan": "basic_monthly"})
-        )
+        response = self.client.get(reverse("payments:checkout", kwargs={"plan": "basic_monthly"}))
 
         self.assertEqual(response.status_code, 302)
         self.assertIn("mercadopago.com", response.url)
@@ -209,9 +192,7 @@ class MercadoPagoWebhookViewTest(TestCase):
 
     @patch("payments.views.settings")
     @patch("payments.views.fetch_preapproval")
-    def test_webhook_aceita_quando_secret_vazio(
-        self, mock_fetch, mock_settings
-    ):
+    def test_webhook_aceita_quando_secret_vazio(self, mock_fetch, mock_settings):
         mock_settings.MERCADOPAGO_WEBHOOK_SECRET = ""
         mock_fetch.return_value = {
             "id": "preapproval_123",

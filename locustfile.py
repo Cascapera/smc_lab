@@ -12,7 +12,7 @@ Para linha de comando sem UI:
   locust -f locustfile.py --host=http://localhost:8000 --users 10 --spawn-rate 2 --run-time 60s --headless
 """
 
-from locust import HttpUser, task, between
+from locust import HttpUser, between, task
 
 
 class WebsiteUser(HttpUser):

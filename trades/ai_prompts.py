@@ -65,7 +65,9 @@ def build_analytics_user_prompt(context: dict) -> str:
     lines.append("")
 
     # Perguntas + formato de saída (resposta rica, uma chamada)
-    lines.append("--- Perguntas (responda com base APENAS nos dados acima; use exatamente os títulos abaixo) ---")
+    lines.append(
+        "--- Perguntas (responda com base APENAS nos dados acima; use exatamente os títulos abaixo) ---"
+    )
     lines.append("")
     lines.append(
         "1) Regra: Em UMA FRASE, qual regra de decisão o trader deve seguir com base nas melhores e piores combinações?"
@@ -222,7 +224,9 @@ def build_global_analytics_user_prompt(context: dict) -> str:
     )
     lines.append("")
 
-    lines.append("--- Perguntas (responda com base APENAS nos dados acima; use exatamente os títulos abaixo) ---")
+    lines.append(
+        "--- Perguntas (responda com base APENAS nos dados acima; use exatamente os títulos abaixo) ---"
+    )
     lines.append("")
     lines.append(
         "1) Regra global: Em UMA FRASE, qual regra de decisão a comunidade deve seguir com base nas melhores e piores combinações?"
