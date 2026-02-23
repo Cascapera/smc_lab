@@ -10,6 +10,7 @@ from .base import *  # noqa: F401, F403
 
 DEBUG = False
 SECRET_KEY = "ci-secret-key-not-for-production"
+ALLOWED_HOSTS = ["testserver", "localhost", "127.0.0.1"]
 
 # SQLite em memória: mais rápido e não deixa arquivos
 DATABASES = {
@@ -31,3 +32,8 @@ CACHES = {
         "LOCATION": "ci-cache",
     }
 }
+
+# Hasher rápido para testes (evita lentidão do PBKDF2)
+PASSWORD_HASHERS = [
+    "django.contrib.auth.hashers.MD5PasswordHasher",
+]
