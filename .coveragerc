@@ -1,0 +1,25 @@
+[run]
+source = .
+omit =
+    .venv/*
+    venv/*
+    */migrations/*
+    */tests/*
+    manage.py
+    */settings/*
+    */__init__.py
+    conftest.py
+    locustfile.py
+    */wsgi.py
+    */asgi.py
+    */middleware.py
+    */management/commands/*
+
+[report]
+fail_under = 70
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise NotImplementedError
+    if TYPE_CHECKING:
+    if __name__ == .__main__.:

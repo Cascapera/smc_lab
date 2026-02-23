@@ -1,7 +1,5 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard Avançado | Trader Portal{% endblock %}
-
 {% block content %}
 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:space-between;margin-bottom:0.5rem;">
   <h1 style="margin:0;">Dashboard Avançado</h1>
@@ -16,7 +14,7 @@
       <div style="color:#cbd5e1; font-size:13px;">A inteligência artificial irá analisar suas operações por métricas quant avançadas para que você possa evoluir seus trades.</div>
     </div>
   </div>
-  <a href="{% url 'trades:dashboard' %}" class="btn" style="padding:10px 14px; font-size:12px;">Iniciar análise por IA</a>
+  <a href="{% url 'trades:analytics_ia' %}" class="btn" style="padding:10px 14px; font-size:12px;">Iniciar análise por IA</a>
 </div>
 
 {% with adv=advanced %}
@@ -187,7 +185,11 @@
       <tbody>
         {% for trade in adv_trades_page %}
         <tr>
-          <td style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.executed_at|date:"d/m/Y H:i" }}</td>
+          <td style="padding:0.4rem;border-bottom:1px solid #1e293b;">
+            <a href="{% url 'trades:trade_edit' trade.pk %}?next={{ request.get_full_path|urlencode }}" style="color:#38bdf8;">
+              {{ trade.executed_at|date:"d/m/Y H:i" }}
+            </a>
+          </td>
           <td style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.symbol }}</td>
           <td style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_market_display }}</td>
           <td style="padding:0.4rem;border-bottom:1px solid #1e293b;">{{ trade.get_direction_display }}</td>
@@ -202,7 +204,7 @@
           <td data-colorize-cell="result" data-value="{{ trade.result_type }}" style="padding:0.4rem;text-align:right;border-bottom:1px solid #1e293b;">R$ {{ trade.profit_amount }}</td>
           <td style="padding:0.4rem;text-align:center;border-bottom:1px solid #1e293b;">
             {% if trade.screenshot %}
-              <a href="{{ trade.screenshot.url }}" target="_blank" title="Ver captura" style="color:#38bdf8;">📷</a>
+              <a href="{% url 'trades:trade_screenshot' trade.pk %}" target="_blank" title="Ver captura" style="color:#38bdf8;">📷</a>
             {% else %}
               —
             {% endif %}
@@ -250,6 +252,31 @@
 <section style="margin-bottom:2rem;">
     <h2>Por tipo de entrada</h2>
     {% include "trades/partials/_table_breakdown.html" with rows=by_entry_type %}
+</section>
+
+<section style="margin-bottom:2rem;">
+    <h2>Resultados por contexto macro (HTF)</h2>
+    {% include "trades/partials/_table_breakdown.html" with rows=by_htf %}
+</section>
+
+<section style="margin-bottom:2rem;">
+    <h2>Resultados por tendência</h2>
+    {% include "trades/partials/_table_breakdown.html" with rows=by_trend %}
+</section>
+
+<section style="margin-bottom:2rem;">
+    <h2>Resultados por Painel SMC</h2>
+    {% include "trades/partials/_table_breakdown.html" with rows=by_smc_panel %}
+</section>
+
+<section style="margin-bottom:2rem;">
+    <h2>Resultados por Região HTF</h2>
+    {% include "trades/partials/_table_breakdown.html" with rows=by_region_htf %}
+</section>
+
+<section style="margin-bottom:2rem;">
+    <h2>Resultados por Gatilho</h2>
+    {% include "trades/partials/_table_breakdown.html" with rows=by_trigger %}
 </section>
 
 {% if advanced_chart.labels %}

@@ -1,0 +1,6 @@
+# Dependências de desenvolvimento (lint, format, etc.)
+# Instalar: pip install -r requirements-dev.txt
+-r requirements.txt
+
+ruff>=0.8.0
+coverage[toml]>=7.0.0

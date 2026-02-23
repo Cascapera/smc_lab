@@ -1,22 +1,23 @@
-from decimal import Decimal
 import random
+from decimal import Decimal
+
 from django.utils import timezone
 
 from accounts.models import User
 from trades.models import (
-    Trade,
-    Market,
+    Currency,
     Direction,
+    EntryType,
     HighTimeFrame,
-    Trend,
+    Market,
+    PartialTrade,
     PremiumDiscount,
     RegionHTF,
-    EntryType,
-    Setup,
-    Trigger,
-    PartialTrade,
     ResultType,
-    Currency,
+    Setup,
+    Trade,
+    Trend,
+    Trigger,
 )
 
 user = User.objects.order_by("id").first()
@@ -37,8 +38,10 @@ symbols = [
     ("NVDA", Market.STOCKS),
 ]
 
+
 def random_choice(choices):
     return random.choice([choice[0] for choice in choices])
+
 
 for _ in range(40):
     symbol, market = random.choice(symbols)
@@ -63,22 +66,31 @@ for _ in range(40):
         weights=[0.45, 0.35, 0.20],
     )[0]
 
+    # Ganho técnico na mesma unidade que resultado (reais), para Result/ Técnico fazer sentido
     if result == ResultType.GAIN:
         profit = Decimal(random.randint(50, 400))
-        technical = Decimal(str(round(random.uniform(1.0, 3.0), 2)))
+        ratio = Decimal(str(round(random.uniform(0.80, 1.20), 2)))
+        technical = (profit * ratio).quantize(Decimal("0.01"))
     elif result == ResultType.LOSS:
         profit = Decimal(-random.randint(40, 350))
-        technical = Decimal(str(round(-random.uniform(0.5, 2.5), 2)))
+        ratio = Decimal(str(round(random.uniform(0.80, 1.20), 2)))
+        technical = (profit * ratio).quantize(Decimal("0.01"))
     else:
         profit = Decimal("0")
         technical = Decimal("0.00")
 
     quantity = Decimal(random.randint(1, 5))
-    base_price = Decimal(random.randint(150, 300)) if market == Market.STOCKS else Decimal(random.randint(1000, 2000))
+    base_price = (
+        Decimal(random.randint(150, 300))
+        if market == Market.STOCKS
+        else Decimal(random.randint(1000, 2000))
+    )
     target_price = base_price + Decimal(random.randint(5, 25))
     stop_price = base_price - Decimal(random.randint(5, 20))
 
-    currency = Currency.USD if market in {Market.DOLLAR, Market.CRYPTO, Market.FOREX} else Currency.BRL
+    currency = (
+        Currency.USD if market in {Market.DOLLAR, Market.CRYPTO, Market.FOREX} else Currency.BRL
+    )
 
     is_public = random.random() < 0.6
     display_anon = True if not is_public else (random.random() < 0.5)
@@ -109,4 +121,6 @@ for _ in range(40):
         notes="Trade de teste gerado automaticamente.",
     )
 
-print(f"Foram gerados {Trade.objects.filter(user=user).count()} trades para o usuÃ¡rio {user.username}.")
+print(
+    f"Foram gerados {Trade.objects.filter(user=user).count()} trades para o usuÃ¡rio {user.username}."
+)

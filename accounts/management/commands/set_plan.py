@@ -16,8 +16,8 @@ class Command(BaseCommand):
         parser.add_argument(
             "--plan",
             required=True,
-            choices=[Plan.FREE, Plan.BASIC, Plan.PREMIUM],
-            help="Plano a aplicar (free/basic/premium)",
+            choices=[Plan.FREE, Plan.BASIC, Plan.PREMIUM, Plan.PREMIUM_PLUS],
+            help="Plano a aplicar (free/basic/premium/premium_plus)",
         )
         parser.add_argument(
             "--expires",

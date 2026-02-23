@@ -1,0 +1,21 @@
+# Logs da aplicação web (Gunicorn + SLOW_REQUEST)
+docker-compose logs -f web
+
+# Últimas 200 linhas
+docker-compose logs --tail=200 web
+
+# Últimas 500 linhas
+docker-compose logs --tail=500 web
+
+
+# Só linhas com SLOW_REQUEST
+docker-compose logs web 2>&1 | grep SLOW_REQUEST
+
+# Últimas 1000 linhas e filtrar
+docker-compose logs --tail=1000 web 2>&1 | grep SLOW_REQUEST
+
+# Worker (Celery)
+docker-compose logs -f worker
+
+# Beat (agendador)
+docker-compose logs -f beat

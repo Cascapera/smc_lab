@@ -1,0 +1,378 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+  .smc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 18px;
+    margin-top: 24px;
+  }
+  .smc-card {
+    background: #111;
+    border: 1px solid #1f1f1f;
+    border-radius: 12px;
+    padding: 16px 16px 20px;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+  }
+  .smc-title {
+    margin: 0 0 4px;
+    font-size: 22px;
+    font-weight: 600;
+  }
+  .gauge-shell {
+    position: relative;
+    width: 348px;
+    height: 174px;
+    margin: 0 auto;
+    overflow: hidden;
+  }
+  .flow-card {
+    display: flex;
+    gap: 16px;
+    align-items: stretch;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    padding-left: 10%;
+  }
+  .tickers-card {
+    margin-top: 18px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+  }
+  .ticker-box {
+    background: #0f0f0f;
+    border: 1px solid #1f1f1f;
+    border-radius: 12px;
+    padding: 12px 14px;
+    box-shadow: inset 0 0 0 1px #0a0a0a;
+  }
+  .ticker-box h3 {
+    margin: 0 0 6px;
+    font-size: 16px;
+  }
+  .ticker-value {
+    font-size: 20px;
+    font-weight: 700;
+  }
+  .flow-chart-box {
+    flex: 0 0 384px;  /* +20% em relação aos 320px anteriores */
+    min-width: 336px;
+    min-height: 200px;
+    max-height: 220px;
+    background: #0f0f0f;
+    border: 1px solid #1f1f1f;
+    border-radius: 12px;
+    padding: 10px;
+    box-shadow: inset 0 0 0 1px #0a0a0a;
+    overflow: hidden;
+    position: relative;
+  }
+  .flow-watermark {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 36px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.08);
+    pointer-events: none;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    user-select: none;
+  }
+  .gauge-arc {
+      width: 350px;
+      height: 350px;
+      border-radius: 50%;
+      background: conic-gradient(
+        from -90deg,
+        #8b1c1c 0deg 22.5deg,
+        #d64545 22.5deg 45deg,
+        #ff8f8f 45deg 67.5deg,
+        #6e6e6e 67.5deg 90deg,
+        #6e6e6e 90deg 112.5deg,
+        #9ed59e 112.5deg 135deg,
+        #33a15a 135deg 157.5deg,
+        #0a6f3d 157.5deg 180deg,
+        transparent 180deg 360deg
+      );
+      z-index: 1;
+      position: absolute;
+      bottom: -180px;
+      left: -4px;
+      border: 1px solid #0a0a0a;
+    }
+    .gauge-mask {
+      position: absolute;
+      bottom: -120px;
+      left: 58px;
+      width: 230px;
+      height: 240px;
+      background: #0f0f0f;
+      border-radius: 50%;
+      box-shadow: inset 0 0 0 12px #0a0a0a;
+      z-index: 2;
+    }
+    .gauge-needle {
+      position: absolute;
+      bottom: 11px;
+      left: 50%;
+      width: 8px;
+      height: 150px;
+      background: #e5ff3d;
+      transform-origin: bottom center;
+      transform: translateX(-50%) rotate(0deg);
+      transition: transform 0.6s ease;
+      border-radius: 4px;
+      box-shadow: none;
+      z-index: 4;
+    }
+    .gauge-pin {
+      position: absolute;
+      bottom: -4px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 32px;
+      height: 32px;
+      background: #e5ff3d;
+      border-radius: 50%;
+      box-shadow: 0 0 6px rgba(229,255,61,0.55);
+      z-index: 5;
+    }
+</style>
+
+<section class="container" style="padding: 28px 0;">
+  <div style="display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap;">
+    <h1 style="margin: 0;">Painel SMC</h1>
+    <a href="{% url 'macro:painel_clean' %}" target="_blank" rel="noopener" style="font-size:14px; color:#93c5fd; text-decoration:none;">
+      Abrir painel separado
+    </a>
+  </div>
+  <p style="margin: 4px 0 12px; color: #b0b0b0;">
+    Painel que mostra o sentimento do mercado e o fluxo do dinheiro. Acesso restrito a planos Basic e Premium.
+  </p>
+
+  <div class="smc-grid">
+    <div class="smc-card flow-card">
+      <div>
+        <div class="gauge-shell" style="margin-top: 20px;">
+          <div class="gauge-arc"></div>
+          <div class="gauge-needle" id="gauge-needle"></div>
+          <div class="gauge-mask"></div>
+          <div class="gauge-pin"></div>
+        </div>
+        <div style="text-align:center; margin-top:8px; font-weight:700;">Termômetro</div>
+      </div>
+      <div class="flow-chart-box">
+        <canvas id="smc-flow" style="width:100%; height:180px; display:block;"></canvas>
+        <div class="flow-watermark">Fluxo do Dinheiro</div>
+        <div style="text-align:center; margin-top:8px; font-weight:700;">Fluxo do Dinheiro</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tickers-card smc-card">
+    <div class="ticker-box">
+      <h3>EWZ</h3>
+      <div class="ticker-value" id="ewz-value">--</div>
+    </div>
+    <div class="ticker-box">
+      <h3>DXY</h3>
+      <div class="ticker-value" id="dxy-value">--</div>
+    </div>
+  </div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+<script>
+  function updateGauge(value) {
+    // value esperado entre -24 e +24
+    const needle = document.getElementById("gauge-needle");
+    const clamped = Math.max(-24, Math.min(24, value || 0));
+    const deg = (clamped / 24) * 90; // -90 a +90
+    needle.style.transform = `translateX(-50%) rotate(${deg}deg)`;
+  }
+
+  async function fetchScores(limit = 40) {
+    const res = await fetch(`/macro/scores/?limit=${limit}`);
+    const json = await res.json();
+    const results = json.results || [];
+    return results;
+  }
+
+  async function fetchVariations(limit = 200) {
+    const res = await fetch(`/macro/variations/?limit=${limit}`);
+    const json = await res.json();
+    const results = json.results || [];
+    return results;
+  }
+
+  function formatTimeLabel(timeStr) {
+    try {
+      const date = new Date(timeStr);
+      const hours = date.getHours().toString().padStart(2, '0');
+      const minutes = date.getMinutes().toString().padStart(2, '0');
+      return `${hours}:${minutes}`;
+    } catch {
+      return timeStr;
+    }
+  }
+
+  function formatTimeLabelFromDate(date) {
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return `${hours}:${minutes}`;
+  }
+
+  function roundToNearestHalfHour(timeStr) {
+    try {
+      const date = new Date(timeStr);
+      if (Number.isNaN(date.getTime())) {
+        return null;
+      }
+      const minutes = date.getMinutes();
+      if (minutes >= 45) {
+        date.setHours(date.getHours() + 1);
+        date.setMinutes(0, 0, 0);
+      } else if (minutes >= 15) {
+        date.setMinutes(30, 0, 0);
+      } else {
+        date.setMinutes(0, 0, 0);
+      }
+      return date;
+    } catch {
+      return null;
+    }
+  }
+
+  function shouldShowLabel(timeStr, index) {
+    try {
+      const date = new Date(timeStr);
+      const minutes = date.getMinutes();
+      return minutes === 0 || minutes === 30;
+    } catch {
+      return index % 2 === 0;
+    }
+  }
+
+  function renderFlowChart(canvas, scoresAsc) {
+    const ctx = canvas.getContext("2d");
+    const labels = scoresAsc.map((s) => s.measurement_time);
+    const data = scoresAsc.map((s) => s.variation_sum || 0);
+
+    // garante pelo menos 2 pontos para renderizar linha e preenchimento
+    if (data.length === 1) {
+      labels.unshift(labels[0]);
+      data.unshift(data[0]);
+    }
+    if (data.length === 0) {
+      labels.push("0", "1");
+      data.push(0, 0);
+    }
+    const minVal = Math.min(...data, 0);
+    const maxVal = Math.max(...data, 0);
+    const maxAbs = Math.max(Math.abs(minVal), Math.abs(maxVal), 0.01);
+    const padding = maxAbs * 0.2;
+
+    const formattedLabels = labels;
+
+    const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    gradient.addColorStop(0, "rgba(112, 224, 0, 0.8)");
+      gradient.addColorStop(0.70, "rgba(120, 120, 120, 0.05)");
+      gradient.addColorStop(0.70, "rgba(120, 120, 120, 0.05)");
+      gradient.addColorStop(1, "rgba(139, 28, 28, 0.8)");
+
+    return new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: formattedLabels,
+        datasets: [
+          {
+            label: "Variação soma",
+            data,
+            borderColor: "#f3cd47",
+            backgroundColor: gradient,
+            tension: 0.35,
+            fill: true,
+            borderWidth: 2,
+            pointRadius: 0,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: {
+            display: false,
+          },
+          y: {
+            grid: {
+              color: (ctx) => (ctx.tick.value === 0 ? "#666" : "rgba(255,255,255,0.07)"),
+              lineWidth: (ctx) => (ctx.tick.value === 0 ? 1.2 : 0.8),
+            },
+            ticks: { display: false },
+            suggestedMin: -(maxAbs + padding),
+            suggestedMax: maxAbs + padding,
+          },
+        },
+      },
+    });
+  }
+
+  let flowChart = null;
+
+  async function updatePanel() {
+    const scores = await fetchScores(60);
+    const variations = await fetchVariations(200);
+
+    const latest = (scores || [])[0] || null;
+    const lastScore = latest ? latest.total_score : 0;
+    updateGauge(lastScore);
+
+    const scoresAsc = [...scores].reverse();
+    const canvas = document.getElementById("smc-flow");
+    if (scoresAsc.length === 0) {
+      scoresAsc.push({ measurement_time: "0", variation_sum: 0 });
+      scoresAsc.push({ measurement_time: "1", variation_sum: 0 });
+    }
+    if (flowChart) {
+      flowChart.destroy();
+    }
+    flowChart = renderFlowChart(canvas, scoresAsc);
+
+    // EWZ e DXY
+    const findTicker = (keys) => {
+      const keyList = keys.map(k => k.toLowerCase());
+      for (const v of variations) {
+        const name = (v.asset || "").toLowerCase();
+        if (keyList.some(k => name.includes(k))) {
+          return v.variation_text || (v.variation_decimal != null ? `${(v.variation_decimal*100).toFixed(2)}%` : "--");
+        }
+      }
+      return "--";
+    };
+    const setTicker = (id, val) => {
+      const el = document.getElementById(id);
+      el.textContent = val;
+      if (typeof val === "string" && val.includes("%")) {
+        const num = parseFloat(val.replace("%","").replace(",","."));
+        if (!isNaN(num)) {
+          el.style.color = num < 0 ? "#d64545" : num > 0 ? "#33a15a" : "#9aa0a6";
+        }
+      }
+    };
+
+    setTicker("ewz-value", findTicker(["ewz", "msci brazil", "ishares msci brazil"]));
+    setTicker("dxy-value", findTicker(["dxy", "dollar index", "índice dólar", "indice dolar"]));
+  }
+
+  document.addEventListener("DOMContentLoaded", async () => {
+    await updatePanel();
+    setInterval(updatePanel, 60000); // auto-refresh a cada 60s
+  });
+</script>
+{% endblock %}

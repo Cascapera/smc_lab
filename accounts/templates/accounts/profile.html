@@ -1,11 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}Perfil | Trader Portal{% endblock %}
-
 {% block content %}
 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:1rem;">
   <h1 style="margin:0;">Perfil</h1>
   <span style="color:#cbd5e1;font-size:13px;">Suas informações de conta</span>
+  <a class="btn btn-primary" href="{% url 'accounts:profile_edit' %}">Editar perfil</a>
 </div>
 
 <div style="display:grid;gap:1rem;grid-template-columns: repeat(auto-fit,minmax(260px,1fr));">
@@ -14,8 +13,15 @@
     <div style="color:#cbd5e1;font-size:14px;display:flex;flex-direction:column;gap:4px;">
       <div><strong>Nome:</strong> {{ user_obj.get_full_name|default:user_obj.username }}</div>
       <div><strong>E-mail:</strong> {{ user_obj.email }}</div>
-      <div><strong>Plano:</strong> {% if profile %}{{ profile.get_plan_display }}{% else %}N/D{% endif %}</div>
+      <div><strong>Plano:</strong> {% if profile %}{{ profile.get_active_plan_display }}{% else %}N/D{% endif %}</div>
       <div><strong>Expira em:</strong> {% if profile and profile.plan_expires_at %}{{ profile.plan_expires_at|date:"d/m/Y H:i" }}{% else %}N/D{% endif %}</div>
+    </div>
+    <div style="margin-top:10px;color:#cbd5e1;font-size:13px;line-height:1.4;">
+      Após vincular sua conta do Discord você deve entrar no grupo para ter liberação dos acessos.
+      <a href="https://discord.gg/tgbeJgYZ" target="_blank" rel="noopener" style="color:#38bdf8;">https://discord.gg/tgbeJgYZ</a>
+    </div>
+    <div style="margin-top:12px;">
+      <a class="btn btn-primary" href="{% url 'payments:plans' %}">Ver planos</a>
     </div>
   </div>
 
@@ -26,6 +32,16 @@
       <div><strong>País:</strong> {{ profile.country|default:"N/D" }}</div>
       <div><strong>Estado:</strong> {{ profile.state|default:"N/D" }}</div>
       <div><strong>Cidade:</strong> {{ profile.city|default:"N/D" }}</div>
+      <div><strong>CEP:</strong> {{ profile.zipcode|default:"N/D" }}</div>
+    </div>
+  </div>
+
+  <div style="background:#0b1220;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:1rem;">
+    <h3 style="margin:0 0 8px;">Documentação</h3>
+    <div style="color:#cbd5e1;font-size:14px;display:flex;flex-direction:column;gap:4px;">
+      <div><strong>CPF/CNPJ:</strong> {{ profile.document_id|default:"N/D" }}</div>
+      <div><strong>Endereço:</strong> {{ profile.address_line1|default:"N/D" }}</div>
+      <div><strong>Complemento:</strong> {{ profile.address_line2|default:"N/D" }}</div>
     </div>
   </div>
 
@@ -35,6 +51,23 @@
       <div><strong>Receber e-mails:</strong> {% if profile.email_opt_in %}Sim{% else %}Não{% endif %}</div>
       <div><strong>Fuso horário:</strong> {{ profile.timezone|default:"N/D" }}</div>
       <div><strong>Último reset:</strong> {% if profile.last_reset_at %}{{ profile.last_reset_at|date:"d/m/Y H:i" }}{% else %}N/D{% endif %}</div>
+    </div>
+  </div>
+
+  <div style="background:#0b1220;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:1rem;">
+    <h3 style="margin:0 0 8px;">Discord</h3>
+    <div style="color:#cbd5e1;font-size:14px;display:flex;flex-direction:column;gap:6px;">
+      {% if profile.discord_user_id %}
+        <div><strong>Conta:</strong> {{ profile.discord_username|default:profile.discord_user_id }}</div>
+        <div><strong>Conectado em:</strong> {{ profile.discord_connected_at|date:"d/m/Y H:i"|default:"N/D" }}</div>
+        <form method="post" action="{% url 'discord:unlink' %}">
+          {% csrf_token %}
+          <button class="btn" type="submit">Desvincular Discord</button>
+        </form>
+      {% else %}
+        <div>Conta Discord não conectada.</div>
+        <a class="btn btn-primary" href="{% url 'discord:login' %}">Conectar Discord</a>
+      {% endif %}
     </div>
   </div>
 </div>

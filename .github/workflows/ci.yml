@@ -1,0 +1,96 @@
+# =============================================================================
+# CI — Integração Contínua do SMC Lab
+# =============================================================================
+# Este workflow roda automaticamente a cada push e em cada Pull Request.
+# Garante que o código está funcionando antes de fazer merge.
+# =============================================================================
+
+name: CI
+
+# Quando o workflow deve ser executado (todas as branches)
+on:
+  push:
+  pull_request:
+
+# Permite cancelar execuções duplicadas (ex: vários pushes rápidos)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+
+      - name: Instalar Ruff
+        run: pip install ruff
+
+      - name: Rodar Ruff (check)
+        run: ruff check .
+
+      - name: Rodar Ruff (format --check)
+        run: ruff format --check .
+
+  test:
+    name: Testes
+    runs-on: ubuntu-latest
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 1. Checkout — baixa o código do repositório
+      # -----------------------------------------------------------------------
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # 2. Setup Python — instala a versão correta do Python
+      # -----------------------------------------------------------------------
+      - name: Configurar Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"  # Reutiliza cache de pacotes entre execuções
+
+      # -----------------------------------------------------------------------
+      # 3. Instalar dependências
+      # -----------------------------------------------------------------------
+      - name: Instalar dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install coverage[toml]>=7.0.0
+
+      # -----------------------------------------------------------------------
+      # 4. Validar configuração do Django
+      # -----------------------------------------------------------------------
+      - name: Verificar configuração (manage.py check)
+        env:
+          DJANGO_SETTINGS_MODULE: trader_portal.settings.ci
+        run: python manage.py check
+
+      # -----------------------------------------------------------------------
+      # 5. Verificar migrações (nenhuma pendente)
+      # -----------------------------------------------------------------------
+      - name: Verificar migrações (makemigrations --check)
+        env:
+          DJANGO_SETTINGS_MODULE: trader_portal.settings.ci
+        run: python manage.py makemigrations --check
+
+      # -----------------------------------------------------------------------
+      # 6. Rodar testes com cobertura (mínimo 70%)
+      # -----------------------------------------------------------------------
+      - name: Executar testes com cobertura
+        env:
+          DJANGO_SETTINGS_MODULE: trader_portal.settings.ci
+        run: |
+          coverage run manage.py test --verbosity=2
+          coverage report --fail-under=70

@@ -1,0 +1,46 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
+  &rsaquo; <a href="{% url 'admin:trades_trade_changelist' %}">Trades</a>
+  &rsaquo; {{ title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  <h1>{{ title }}</h1>
+  <p class="quiet">Usuários ordenados pelo total de operações registradas.</p>
+
+  <table class="results" style="width: auto; margin-top: 1rem;">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Usuário</th>
+        <th>E-mail</th>
+        <th>Total de operações</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for user in ranking %}
+      <tr class="{% cycle 'row1' 'row2' %}">
+        <td>{{ forloop.counter }}</td>
+        <td>
+          <a href="{% url 'admin:accounts_user_change' user.pk %}">{{ user.get_full_name|default:user.username }}</a>
+        </td>
+        <td>{{ user.email }}</td>
+        <td><strong>{{ user.total_operacoes }}</strong></td>
+      </tr>
+      {% empty %}
+      <tr>
+        <td colspan="4">Nenhum usuário com operações registradas.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

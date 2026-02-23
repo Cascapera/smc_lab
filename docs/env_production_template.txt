@@ -1,0 +1,66 @@
+# ============================================
+# Configuração de Produção - AWS Lightsail
+# ============================================
+# Copie este conteúdo para .env no servidor e preencha os valores
+
+# Django Settings
+DJANGO_SECRET_KEY=GERE_UMA_CHAVE_SECRETA_AQUI
+DJANGO_DEBUG=False
+DJANGO_ALLOWED_HOSTS=["smclab.com.br","www.smclab.com.br","SEU_IP_LIGHTSAIL"]
+
+# Database (PostgreSQL)
+# Formato: postgres://usuario:senha@postgres:5432/nome_banco
+DATABASE_URL=postgres://trader_user:SENHA_SUPER_SEGURA_AQUI@postgres:5432/trader_portal
+
+# Celery (Redis)
+CELERY_BROKER_URL=redis://redis:6379/0
+CELERY_RESULT_BACKEND=redis://redis:6379/0
+
+# Mercado Pago (Pagamentos)
+MERCADOPAGO_ACCESS_TOKEN=COLOQUE_SEU_ACCESS_TOKEN
+MERCADOPAGO_PUBLIC_KEY=COLOQUE_SUA_PUBLIC_KEY
+MERCADOPAGO_CURRENCY=BRL
+MERCADOPAGO_BACK_URL=https://SEU_DOMINIO_OU_NGROK/pagamentos/retorno/
+MERCADOPAGO_WEBHOOK_URL=https://SEU_DOMINIO_OU_NGROK/pagamentos/webhook/
+MERCADOPAGO_WEBHOOK_SECRET=SEU_SECRET_DA_ASSINATURA_WEBHOOK
+MERCADOPAGO_TEST_PAYER_EMAIL=SEU_COMPRADOR_TESTE@email.com
+MERCADOPAGO_TRIAL_DAYS=7
+MERCADOPAGO_BASIC_MONTHLY_PRICE=79.90
+MERCADOPAGO_BASIC_ANNUAL_PRICE=359.88
+MERCADOPAGO_PREMIUM_MONTHLY_PRICE=129.90
+MERCADOPAGO_PREMIUM_ANNUAL_PRICE=719.88
+MERCADOPAGO_PREMIUM_PLUS_MONTHLY_PRICE=250.00
+MERCADOPAGO_PREMIUM_PLUS_QUARTERLY_PRICE=600.00
+MERCADOPAGO_PREMIUM_PLUS_SEMIANNUAL_PRICE=1000.00
+MERCADOPAGO_PREMIUM_PLUS_ANNUAL_PRICE=1800.00
+MERCADOPAGO_PREMIUM_PLUS_TEST_PRICE=5.00
+
+# Discord
+DISCORD_CLIENT_ID=SEU_CLIENT_ID
+DISCORD_CLIENT_SECRET=SEU_CLIENT_SECRET
+DISCORD_REDIRECT_URI=https://SEU_DOMINIO/discord/callback/
+DISCORD_BOT_TOKEN=SEU_BOT_TOKEN
+DISCORD_GUILD_ID=SEU_GUILD_ID
+DISCORD_ROLE_BASIC_ID=SEU_ROLE_BASIC_ID
+DISCORD_ROLE_PREMIUM_ID=SEU_ROLE_PREMIUM_ID
+DISCORD_ROLE_PREMIUM_PLUS_ID=SEU_ROLE_PREMIUM_PLUS_ID
+
+# Timezone
+TZ=America/Sao_Paulo
+
+# ============================================
+# INSTRUÇÕES:
+# ============================================
+# 1. Gere a chave secreta com:
+#    python3 -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+#
+# 2. Substitua SENHA_SUPER_SEGURA_AQUI por uma senha forte
+#    Use letras, números e caracteres especiais
+#    Exemplo: MinhaSenh@2024!Segura
+#
+# 3. Substitua SEU_IP_LIGHTSAIL pelo IP estático da sua instância Lightsail
+#    Você encontra o IP na página da instância no Lightsail
+#
+# 4. Se usar domínio, substitua smclab.com.br pelo seu domínio
+#
+# 5. NUNCA commite este arquivo com valores reais no Git!

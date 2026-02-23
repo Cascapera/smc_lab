@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import sys
+from decimal import Decimal
 from pathlib import Path
 
 import environ
+from celery.schedules import crontab
 
 # --------------------------------------------------------------------------------------
 # Paths & environment
@@ -21,6 +24,22 @@ env = environ.Env(
 ENV_FILE = BASE_DIR / ".env"
 if ENV_FILE.exists():
     environ.Env.read_env(str(ENV_FILE))
+
+LOG_DIR = Path(env("DJANGO_LOG_DIR", default=str(BASE_DIR / "logs")))
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _decimal_env(name: str, default: str) -> Decimal:
+    """Lê variável de ambiente como Decimal; aceita vírgula e usa default se inválido."""
+    raw = env(name, default=default)
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        raw = default
+    raw = str(raw).strip().replace(",", ".")
+    try:
+        return Decimal(raw)
+    except Exception:
+        return Decimal(default)
+
 
 # --------------------------------------------------------------------------------------
 # Core settings
@@ -48,12 +67,16 @@ THIRD_PARTY_APPS: list[str] = []
 LOCAL_APPS: list[str] = [
     "accounts",
     "trades",
+    "macro",
+    "payments",
+    "discord_integration",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -93,6 +116,44 @@ DATABASES = {
 DATABASES["default"]["ATOMIC_REQUESTS"] = True
 
 # --------------------------------------------------------------------------------------
+# Cache (rate limiting, etc.)
+# --------------------------------------------------------------------------------------
+# LocMemCache funciona para rate limiting em dev. Em produção com múltiplos workers,
+# considere Redis: django.core.cache.backends.redis.RedisCache
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "smc-default",
+    }
+}
+
+# django-ratelimit: desabilitado automaticamente ao rodar manage.py test
+RATELIMIT_ENABLE = "test" not in sys.argv and env.bool("RATELIMIT_ENABLE", default=True)
+
+# --------------------------------------------------------------------------------------
+# Email (recuperação de senha e notificações) - GoDaddy SMTP
+# --------------------------------------------------------------------------------------
+EMAIL_HOST_USER = env("DJANGO_EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("DJANGO_EMAIL_HOST_PASSWORD", default="")
+_EMAIL_CREDENTIALS_SET = bool(EMAIL_HOST_USER and EMAIL_HOST_PASSWORD)
+
+EMAIL_BACKEND = env(
+    "DJANGO_EMAIL_BACKEND",
+    default=(
+        "django.core.mail.backends.smtp.EmailBackend"
+        if _EMAIL_CREDENTIALS_SET
+        else "django.core.mail.backends.console.EmailBackend"
+    ),
+)
+DEFAULT_FROM_EMAIL = env("DJANGO_DEFAULT_FROM_EMAIL", default="noreply@smclab.com.br")
+SERVER_EMAIL = env("DJANGO_SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
+
+# SMTP GoDaddy: smtpout.secureserver.net, porta 587, TLS
+EMAIL_HOST = env("DJANGO_EMAIL_HOST", default="smtpout.secureserver.net")
+EMAIL_PORT = env.int("DJANGO_EMAIL_PORT", default=587)
+EMAIL_USE_TLS = env.bool("DJANGO_EMAIL_USE_TLS", default=True)
+
+# --------------------------------------------------------------------------------------
 # Passwords & authentication
 # --------------------------------------------------------------------------------------
 
@@ -127,6 +188,7 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS: list[Path] = [BASE_DIR / "static"]
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
@@ -138,10 +200,159 @@ AUTH_USER_MODEL = "accounts.User"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 CSRF_TRUSTED_ORIGINS = env.list("DJANGO_CSRF_TRUSTED_ORIGINS", default=[])
-SECURE_PROXY_SSL_HEADER = env.tuple(
-    "DJANGO_SECURE_PROXY_SSL_HEADER", default=None
-) or None
+CSRF_COOKIE_SECURE = env.bool("DJANGO_CSRF_COOKIE_SECURE", default=not DEBUG)
+SESSION_COOKIE_SECURE = env.bool("DJANGO_SESSION_COOKIE_SECURE", default=not DEBUG)
+CSRF_COOKIE_SAMESITE = env("DJANGO_CSRF_COOKIE_SAMESITE", default="Lax")
+CSRF_COOKIE_DOMAIN = env("DJANGO_CSRF_COOKIE_DOMAIN", default=None)
+SESSION_COOKIE_DOMAIN = env("DJANGO_SESSION_COOKIE_DOMAIN", default=None)
+SECURE_PROXY_SSL_HEADER = env.tuple("DJANGO_SECURE_PROXY_SSL_HEADER", default=None) or None
 
 LOGIN_URL = "accounts:login"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "landing"
+
+# Celery
+CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://localhost:6379/0")
+CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default=CELERY_BROKER_URL)
+CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_TASK_ALWAYS_EAGER", default=False)
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = USE_TZ
+CELERY_BEAT_SCHEDULE = {
+    "macro-collect-every-5min": {
+        "task": "macro.tasks.collect_macro_cycle",
+        "schedule": crontab(minute="*/5"),  # 00,05,10...
+    },
+    "discord-sync-daily": {
+        "task": "discord_integration.tasks.sync_all_discord_roles",
+        "schedule": crontab(minute=0, hour=4),
+    },
+}
+
+# --------------------------------------------------------------------------------------
+# Mercado Pago (pagamentos)
+# --------------------------------------------------------------------------------------
+MERCADOPAGO_ACCESS_TOKEN = env("MERCADOPAGO_ACCESS_TOKEN", default="")
+MERCADOPAGO_PUBLIC_KEY = env("MERCADOPAGO_PUBLIC_KEY", default="")
+MERCADOPAGO_CURRENCY = env("MERCADOPAGO_CURRENCY", default="BRL")
+MERCADOPAGO_BACK_URL = env("MERCADOPAGO_BACK_URL", default="")
+MERCADOPAGO_WEBHOOK_URL = env("MERCADOPAGO_WEBHOOK_URL", default="")
+MERCADOPAGO_WEBHOOK_SECRET = env("MERCADOPAGO_WEBHOOK_SECRET", default="")
+MERCADOPAGO_TEST_PAYER_EMAIL = env("MERCADOPAGO_TEST_PAYER_EMAIL", default="")
+MERCADOPAGO_TRIAL_DAYS = env.int("MERCADOPAGO_TRIAL_DAYS", default=7)
+MERCADOPAGO_PREMIUM_PLUS_MONTHLY_PRICE = env(
+    "MERCADOPAGO_PREMIUM_PLUS_MONTHLY_PRICE", default="250.00"
+)
+MERCADOPAGO_PREMIUM_PLUS_QUARTERLY_PRICE = env(
+    "MERCADOPAGO_PREMIUM_PLUS_QUARTERLY_PRICE", default="600.00"
+)
+MERCADOPAGO_PREMIUM_PLUS_SEMIANNUAL_PRICE = env(
+    "MERCADOPAGO_PREMIUM_PLUS_SEMIANNUAL_PRICE", default="1000.00"
+)
+MERCADOPAGO_PREMIUM_PLUS_ANNUAL_PRICE = env(
+    "MERCADOPAGO_PREMIUM_PLUS_ANNUAL_PRICE", default="1800.00"
+)
+MERCADOPAGO_PLANS = {
+    "basic_monthly": {
+        "plan": "basic",
+        "label": "Basic Mensal",
+        "amount": _decimal_env("MERCADOPAGO_BASIC_MONTHLY_PRICE", "79.90"),
+        "frequency": 1,
+        "frequency_type": "months",
+        "duration_days": 30,
+        "billing_type": "subscription",
+    },
+    "basic_annual": {
+        "plan": "basic",
+        "label": "Basic Anual",
+        "amount": _decimal_env("MERCADOPAGO_BASIC_ANNUAL_PRICE", "280.00"),
+        "frequency": 12,
+        "frequency_type": "months",
+        "duration_days": 365,
+        "billing_type": "one_time",
+    },
+    "premium_monthly": {
+        "plan": "premium",
+        "label": "Premium Mensal",
+        "amount": _decimal_env("MERCADOPAGO_PREMIUM_MONTHLY_PRICE", "129.90"),
+        "frequency": 1,
+        "frequency_type": "months",
+        "duration_days": 30,
+        "billing_type": "subscription",
+    },
+    "premium_annual": {
+        "plan": "premium",
+        "label": "Premium Anual",
+        "amount": _decimal_env("MERCADOPAGO_PREMIUM_ANNUAL_PRICE", "589.50"),
+        "frequency": 12,
+        "frequency_type": "months",
+        "duration_days": 365,
+        "billing_type": "one_time",
+    },
+    "premium_plus_monthly": {
+        "plan": "premium_plus",
+        "label": "Premium Plus Mensal",
+        "amount": _decimal_env("MERCADOPAGO_PREMIUM_PLUS_MONTHLY_PRICE", "250.00"),
+        "frequency": 1,
+        "frequency_type": "months",
+        "duration_days": 30,
+        "billing_type": "subscription",
+    },
+    "premium_plus_quarterly": {
+        "plan": "premium_plus",
+        "label": "Premium Plus Trimestral",
+        "amount": _decimal_env("MERCADOPAGO_PREMIUM_PLUS_QUARTERLY_PRICE", "600.00"),
+        "frequency": 3,
+        "frequency_type": "months",
+        "duration_days": 90,
+        "billing_type": "one_time",
+    },
+    "premium_plus_semiannual": {
+        "plan": "premium_plus",
+        "label": "Premium Plus Semestral",
+        "amount": _decimal_env("MERCADOPAGO_PREMIUM_PLUS_SEMIANNUAL_PRICE", "1000.00"),
+        "frequency": 6,
+        "frequency_type": "months",
+        "duration_days": 180,
+        "billing_type": "one_time",
+    },
+    "premium_plus_annual": {
+        "plan": "premium_plus",
+        "label": "Premium Plus Anual",
+        "amount": _decimal_env("MERCADOPAGO_PREMIUM_PLUS_ANNUAL_PRICE", "1800.00"),
+        "frequency": 12,
+        "frequency_type": "months",
+        "duration_days": 365,
+        "billing_type": "one_time",
+    },
+    "premium_plus_test": {
+        "plan": "premium_plus",
+        "label": "Premium Plus Teste",
+        "amount": _decimal_env("MERCADOPAGO_PREMIUM_PLUS_TEST_PRICE", "5.00"),
+        "frequency": 1,
+        "frequency_type": "months",
+        "duration_days": 30,
+        "billing_type": "one_time",
+        "hidden": True,
+    },
+}
+MERCADOPAGO_USE_SANDBOX = env.bool("MERCADOPAGO_USE_SANDBOX", default=DEBUG)
+
+# --------------------------------------------------------------------------------------
+# Discord
+# --------------------------------------------------------------------------------------
+DISCORD_CLIENT_ID = env("DISCORD_CLIENT_ID", default="")
+DISCORD_CLIENT_SECRET = env("DISCORD_CLIENT_SECRET", default="")
+DISCORD_REDIRECT_URI = env("DISCORD_REDIRECT_URI", default="")
+DISCORD_BOT_TOKEN = env("DISCORD_BOT_TOKEN", default="")
+DISCORD_GUILD_ID = env("DISCORD_GUILD_ID", default="")
+DISCORD_ROLE_BASIC_ID = env("DISCORD_ROLE_BASIC_ID", default="")
+DISCORD_ROLE_PREMIUM_ID = env("DISCORD_ROLE_PREMIUM_ID", default="")
+DISCORD_ROLE_PREMIUM_PLUS_ID = env("DISCORD_ROLE_PREMIUM_PLUS_ID", default="")
+
+# Análise por IA (OpenAI GPT-4o mini)
+OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
+OPENAI_ANALYTICS_MODEL = env("OPENAI_ANALYTICS_MODEL", default="gpt-4o-mini")
+
+# Livros recomendados na análise (links de compra)
+BOOK_SMART_MONEY_CONCEPT_URL = env("BOOK_SMART_MONEY_CONCEPT_URL", default="")
+BOOK_BLACK_BOOK_URL = env("BOOK_BLACK_BOOK_URL", default="")

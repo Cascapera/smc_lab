@@ -1,0 +1,16 @@
+Como usar
+No servidor (dentro do container):
+# Por username
+docker-compose exec web python manage.py populate_trades --user=joao
+# Por email: 
+docker-compose exec web python manage.py populate_trades --user=joao@email.com
+# Por ID
+docker-compose exec web python manage.py populate_trades --user=2# Sem --user: usa o primeiro usuário do banco (comportamento antigo)docker-compose exec web python manage.py populate_trades
+Opções extras:
+--count=60 — gera 60 trades em vez de 40
+--no-reset — não apaga os trades atuais do usuário nem reseta o saldo; só adiciona novos trades
+Exemplos:
+# 80 trades para o usuário de email admin@site.com, sem apagar os atuais
+docker-compose exec web python manage.py populate_trades --user=gcascapera@gmail.com --count=10 --no-reset
+
+O script em scripts/populate_trades.py continua lá; o comando manage.py populate_trades é a forma recomendada no servidor, pois aceita --user, --count e --no-reset.

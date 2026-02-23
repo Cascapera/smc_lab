@@ -1,0 +1,53 @@
+services:
+  web:
+    build: .
+    restart: unless-stopped
+    command: gunicorn trader_portal.wsgi:application --bind 0.0.0.0:8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - media_data:/app/media
+    env_file: .env
+    depends_on:
+      - postgres
+      - redis
+
+  worker:
+    build: .
+    restart: unless-stopped
+    command: celery -A trader_portal worker -l info --pool=solo --concurrency=1
+    env_file: .env
+    depends_on:
+      - postgres
+      - redis
+
+  beat:
+    build: .
+    restart: unless-stopped
+    command: celery -A trader_portal beat -l info
+    env_file: .env
+    depends_on:
+      - postgres
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-trader_portal}
+      POSTGRES_USER: ${POSTGRES_USER:-trader_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+volumes:
+  postgres_data:
+  media_data:

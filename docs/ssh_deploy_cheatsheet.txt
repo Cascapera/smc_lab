@@ -1,0 +1,166 @@
+Colinha SSH/Deploy - SMC Lab
+
+Conectar via SSH
+- ssh ubuntu@SEU_IP
+  Entra no servidor.
+
+Navegar e localizar projeto
+- pwd
+  Mostra caminho atual.
+- ls
+  Lista arquivos/pastas.
+- cd ~/app
+  Entra na pasta do projeto (ajuste se necessario).
+
+Abrir e editar arquivos
+- cat .env
+  Mostra o conteudo do arquivo.
+- less .env
+  Visualiza com scroll (q para sair).
+- nano .env
+  Abre o arquivo para edicao no terminal.
+- cp .env .env.bak
+  Faz um backup rapido do .env.
+
+Atualizar codigo (git)
+- git status -sb
+  Verifica se ha alteracoes locais.
+- git pull
+  Atualiza o codigo com o remoto.
+- git log -5 --oneline
+  Ultimos commits.
+
+Build/Deploy com Docker
+- docker-compose up -d --build
+  Rebuilda imagens e sobe containers.
+- ATENCAO: NUNCA rode "docker-compose down -v" em PRODUCAO!
+  O -v remove volumes e APAGA: banco (postgres_data) E imagens (media_data).
+- docker-compose ps
+  Status dos servicos.
+- docker-compose logs -f web
+  Logs da aplicacao.
+- docker-compose logs -f worker
+  Logs do Celery.
+
+Banco e Django (dentro do container)
+- docker-compose exec web python manage.py migrate
+  Aplica migrations.
+- ./scripts/backup_db.sh
+  Backup completo (banco + imagens/media). Guarde em local seguro.
+- docker-compose exec web python manage.py collectstatic --noinput
+  Atualiza arquivos estaticos.
+- docker-compose exec web python manage.py shell
+  Abre shell do Django.
+
+Reiniciar servicos
+- docker-compose restart web
+- docker-compose restart worker
+- docker-compose restart beat
+
+Atalhos uteis
+- tail -f logs/app.log
+  Acompanha logs de um arquivo (ajuste o caminho).
+- tail -f /var/log/syslog
+  Acompanha logs do sistema (se precisar).
+- df -h
+  Uso de disco.
+- free -h
+  Uso de memoria.
+- uptime
+  Carga e tempo ligado.
+- htop
+  Monitor de processos (instale com: sudo apt install -y htop).
+
+Comandos sudo basicos
+- sudo apt update
+  Atualiza lista de pacotes.
+- sudo apt upgrade -y
+  Atualiza pacotes instalados.
+- sudo apt install -y NOME
+  Instala um pacote.
+- sudo systemctl status docker
+  Ver status do Docker.
+- sudo systemctl restart docker
+  Reinicia o Docker.
+
+Permissoes e dono de arquivos
+- ls -lah
+  Lista detalhada com permissoes.
+- chmod 600 .env
+  Protege o arquivo .env.
+- chown ubuntu:ubuntu .env
+  Ajusta dono do arquivo (substitua usuario/grupo).
+
+Rede e processos
+- ss -tulnp
+  Portas em uso e processos.
+- ps aux | grep gunicorn
+  Procura processos pelo nome.
+
+Git (seguranca e manutencao)
+- git diff
+  Mostra alteracoes locais antes de atualizar.
+- git pull --ff-only
+  Atualiza sem criar merge commit.
+- git reset --hard HEAD
+  Descarta alteracoes locais (use com cuidado).
+
+Git (fluxo de commit e branch)
+- git status -sb
+  Mostra status resumido e branch atual.
+- git add ARQUIVO
+  Adiciona arquivo especifico ao stage.
+- git add .
+  Adiciona todas as alteracoes ao stage.
+- git restore --staged ARQUIVO
+  Remove arquivo do stage.
+- git commit -m "mensagem objetiva"
+  Cria commit com mensagem curta.
+- git commit -m "titulo" -m "detalhes"
+  Commit com corpo descritivo.
+- git log --oneline -5
+  Ultimos commits.
+- git switch -c nome-da-branch
+  Cria e troca para nova branch.
+- git switch nome-da-branch
+  Troca de branch.
+- git branch
+  Lista branches.
+- git push -u origin nome-da-branch
+  Sobe branch pela primeira vez.
+- git push
+  Envia commits.
+- git pull
+  Puxa commits do remoto.
+- git fetch
+  Atualiza referencias remotas sem mesclar.
+
+Git (exemplos praticos)
+- git switch -c feature/nova-funcao
+  Cria branch para uma feature.
+- git add .
+  Adiciona alteracoes.
+- git commit -m "feat: adiciona filtro de busca"
+  Cria commit com mensagem padrao.
+- git push -u origin feature/nova-funcao
+  Sobe a branch para o remoto.
+
+Corrigir antes do push
+- git commit --amend -m "mensagem ajustada"
+  Ajusta o ultimo commit (apenas se nao tiver dado push).
+- git rebase -i HEAD~3
+  Reordena/edita os ultimos 3 commits (avancado).
+
+Resolver conflito no pull (resumo)
+- git pull
+  Se houver conflito, o Git avisa quais arquivos.
+- edite os arquivos com conflito
+  Remova marcadores <<<<<<<, =======, >>>>>>>.
+- git add ARQUIVO
+  Marca conflito como resolvido.
+- git commit
+  Finaliza o merge.
+
+Sair
+- exit
+  Encerra a sessao SSH.

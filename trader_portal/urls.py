@@ -14,21 +14,33 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
+from django.templatetags.static import static as static_url
 from django.urls import include, path
-from django.views.generic import TemplateView
+from django.views.generic import RedirectView, TemplateView
+
+from trades.views import MuralView
 
 urlpatterns = [
+    path(
+        "favicon.ico",
+        RedirectView.as_view(url=static_url("image/fav.png"), permanent=True),
+    ),
     path("admin/", admin.site.urls),
     path("accounts/", include("accounts.urls")),
+    path("pagamentos/", include("payments.urls", namespace="payments")),
+    path("discord/", include("discord_integration.urls", namespace="discord")),
     path("trades/", include("trades.urls")),
+    path("macro/", include("macro.urls", namespace="macro")),
     path(
         "recursos/",
         TemplateView.as_view(template_name="recursos.html"),
         name="recursos",
     ),
+    path("mural/", MuralView.as_view(), name="mural"),
     path(
         "",
         TemplateView.as_view(template_name="landing.html"),
@@ -38,3 +50,11 @@ urlpatterns = [
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    try:
+        import debug_toolbar
+
+        urlpatterns = [
+            path("__debug__/", include(debug_toolbar.urls)),
+        ] + urlpatterns
+    except ImportError:
+        pass

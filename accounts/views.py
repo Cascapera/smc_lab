@@ -1,15 +1,46 @@
 from __future__ import annotations
 
 from django.contrib import messages
-from django.contrib.auth.views import LogoutView as DjangoLogoutView
+from django.contrib.auth import get_user_model, logout
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.auth.views import LoginView as DjangoLoginView
+from django.http import JsonResponse
 from django.shortcuts import redirect, render
-from django.urls import reverse_lazy
+from django.urls import reverse, reverse_lazy
 from django.utils import timezone
+from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.generic import TemplateView
+from django_ratelimit.decorators import ratelimit
 
-from .forms import ProfileForm, UserRegistrationForm
+from .forms import EmailAuthenticationForm, ProfileEditForm, ProfileForm, UserRegistrationForm
+
+User = get_user_model()
+
+
+def _rate_limit_exceeded(request):
+    """Redireciona com mensagem quando rate limit é excedido."""
+    messages.warning(
+        request,
+        "Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.",
+    )
+    return redirect(reverse("accounts:login"))
+
+
+@method_decorator(
+    ratelimit(key="ip", rate="5/m", method="POST", block=False),
+    name="post",
+)
+class LoginView(DjangoLoginView):
+    """Login com rate limiting (5 tentativas/minuto por IP)."""
+
+    template_name = "accounts/login.html"
+    authentication_form = EmailAuthenticationForm
+
+    def post(self, request, *args, **kwargs):
+        if getattr(request, "limited", False):
+            return _rate_limit_exceeded(request)
+        return super().post(request, *args, **kwargs)
 
 
 class RegisterView(View):
@@ -26,7 +57,12 @@ class RegisterView(View):
             },
         )
 
+    @method_decorator(
+        ratelimit(key="ip", rate="3/m", method="POST", block=False),
+    )
     def post(self, request):
+        if getattr(request, "limited", False):
+            return _rate_limit_exceeded(request)
         user_form = UserRegistrationForm(request.POST)
         profile_form = ProfileForm(request.POST)
 
@@ -61,10 +97,6 @@ class RegisterView(View):
         )
 
 
-from django.contrib.auth import logout
-from django.shortcuts import redirect
-
-
 class LogoutView(View):
     """
     Faz logout imediatamente (GET ou POST) e redireciona para a landing.
@@ -88,3 +120,35 @@ class ProfileView(LoginRequiredMixin, TemplateView):
         context["user_obj"] = self.request.user
         context["profile"] = getattr(self.request.user, "profile", None)
         return context
+
+
+class ProfileEditView(LoginRequiredMixin, View):
+    template_name = "accounts/profile_edit.html"
+
+    def get(self, request):
+        profile = getattr(request.user, "profile", None)
+        form = ProfileEditForm(instance=profile)
+        return render(request, self.template_name, {"form": form})
+
+    def post(self, request):
+        profile = getattr(request.user, "profile", None)
+        form = ProfileEditForm(request.POST, instance=profile)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Perfil atualizado com sucesso!")
+            return redirect("accounts:profile")
+        messages.error(request, "Por favor, corrija os erros abaixo.")
+        return render(request, self.template_name, {"form": form})
+
+
+class SessionStatusView(View):
+    def get(self, request):
+        if not request.user.is_authenticated:
+            return JsonResponse({"detail": "unauthorized"}, status=401)
+        last_login = request.user.last_login
+        return JsonResponse(
+            {
+                "last_login": last_login.isoformat() if last_login else None,
+                "last_login_ts": int(last_login.timestamp()) if last_login else None,
+            }
+        )

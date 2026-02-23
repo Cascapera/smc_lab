@@ -34,4 +34,3 @@ def update_balance_after_trade_save(sender, instance: Trade, **kwargs) -> None:
 @receiver(post_delete, sender=Trade)
 def update_balance_after_trade_delete(sender, instance: Trade, **kwargs) -> None:
     _recalculate_profile_balance(instance.user)
-

@@ -1,6 +1,4 @@
-﻿{% extends "base.html" %}
-
-{% block title %}Dashboard | Trader Portal{% endblock %}
+{% extends "base.html" %}
 
 {% block content %}
 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:0.5rem;">
@@ -132,7 +130,11 @@
         <tbody>
           {% for trade in trades_page %}
           <tr>
-            <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ trade.executed_at|date:"d/m/Y H:i" }}</td>
+            <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">
+              <a href="{% url 'trades:trade_edit' trade.pk %}?next={{ request.get_full_path|urlencode }}" style="color:#38bdf8;">
+                {{ trade.executed_at|date:"d/m/Y H:i" }}
+              </a>
+            </td>
             <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ trade.symbol }}</td>
             <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ trade.get_market_display }}</td>
             <td style="padding:0.5rem;border-bottom:1e293b;">{{ trade.get_direction_display }}</td>

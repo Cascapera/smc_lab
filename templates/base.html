@@ -1,10 +1,11 @@
-﻿{% load static %}
+{% load static %}
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{% block title %}Trader Portal{% endblock %}</title>
+    <title>{% block title %}SMC Lab{% endblock %}</title>
+    <link rel="icon" href="{% static 'image/fav.png' %}?v=1" type="image/png" />
     <style>
         :root{
             --bg-900:#070B12;
@@ -32,7 +33,7 @@
             font-weight: bold;
         }
         main {
-            max-width: 960px;
+            max-width: 1152px;
             margin: 2rem auto;
             padding: 0 1rem;
             background: rgba(15,23,42,.78);
@@ -112,6 +113,7 @@
             backdrop-filter: blur(10px);
             background: rgba(7,11,18,.60);
             border-bottom: 1px solid var(--line);
+            padding: 0;
         }
         .topbar-inner{
             display: flex;
@@ -124,7 +126,7 @@
             display: flex;
             align-items: center;
             gap: 12px;
-            min-width: 200px;
+            min-width: 260px;
             color: inherit;
             text-decoration: none;
         }
@@ -211,5 +213,36 @@
         const yearEl = document.getElementById("year");
         if (yearEl) yearEl.textContent = new Date().getFullYear();
     </script>
+    {% if request.user.is_authenticated %}
+    <script>
+        const sessionCheckUrl = "{% url 'accounts:session_status' %}";
+        const loginUrl = "{% url 'accounts:login' %}";
+        const initialLoginTs = {{ request.user.last_login|date:"U"|default:"null" }};
+
+        async function checkSessionStatus() {
+            try {
+                const res = await fetch(sessionCheckUrl, { cache: "no-store" });
+                if (!res.ok) {
+                    const next = encodeURIComponent(window.location.pathname + window.location.search);
+                    window.location.href = `${loginUrl}?next=${next}`;
+                    return;
+                }
+                const data = await res.json();
+                if (
+                    initialLoginTs &&
+                    data.last_login_ts &&
+                    Number(data.last_login_ts) !== Number(initialLoginTs)
+                ) {
+                    const next = encodeURIComponent(window.location.pathname + window.location.search);
+                    window.location.href = `${loginUrl}?next=${next}`;
+                }
+            } catch {
+                // ignora falhas temporárias
+            }
+        }
+
+        setInterval(checkSessionStatus, 30000);
+    </script>
+    {% endif %}
 </body>
 </html>
