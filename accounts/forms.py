@@ -73,6 +73,11 @@ class ProfileForm(forms.ModelForm):
         label="Aceito a política de privacidade",
         required=True,
     )
+    timezone = forms.CharField(
+        required=False,
+        widget=forms.HiddenInput(),
+        initial="America/Sao_Paulo",
+    )
 
     class Meta:
         model = Profile
@@ -94,7 +99,6 @@ class ProfileForm(forms.ModelForm):
             "phone": forms.TextInput(attrs={"placeholder": "(11) 99999-9999"}),
             "country": forms.TextInput(attrs={"placeholder": "Brasil"}),
             "zipcode": forms.TextInput(attrs={"placeholder": "00000-000"}),
-            "timezone": forms.HiddenInput(),
         }
 
     def clean_country(self) -> str:
