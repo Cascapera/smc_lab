@@ -43,19 +43,17 @@ name: CI
 ```yaml
 on:
   push:
-    branches: [main, master, develop]
   pull_request:
-    branches: [main, master, develop]
 ```
 
 **O que faz:** Define *quando* o workflow roda.
 
 | Evento        | Significado                                                                 |
 |---------------|-----------------------------------------------------------------------------|
-| `push`        | Roda quando alguém faz `git push` para `main`, `master` ou `develop`        |
-| `pull_request`| Roda quando alguém abre ou atualiza um PR para essas branches             |
+| `push`        | Roda em **qualquer** push para qualquer branch                             |
+| `pull_request`| Roda quando alguém abre ou atualiza um PR para **qualquer** branch       |
 
-**Por que essas branches?** São as branches principais. Você pode adicionar outras (ex: `feature/*`) se quiser.
+**Por que em todas as branches?** Assim você vê o resultado do CI em `feature/*`, `fix/*`, etc., antes de fazer merge.
 
 ---
 

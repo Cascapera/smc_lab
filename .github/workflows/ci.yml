@@ -7,12 +7,10 @@
 
 name: CI
 
-# Quando o workflow deve ser executado
+# Quando o workflow deve ser executado (todas as branches)
 on:
   push:
-    branches: [main, master, develop]
   pull_request:
-    branches: [main, master, develop]
 
 # Permite cancelar execuções duplicadas (ex: vários pushes rápidos)
 concurrency:
