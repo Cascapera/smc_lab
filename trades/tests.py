@@ -252,9 +252,10 @@ class ComputeDrawdownSeriesTest(TestCase):
             balance_series, Decimal("1000")
         )
         self.assertEqual(len(dd_series), 4)
-        self.assertEqual(dd_series[0], 100.0)
-        self.assertEqual(dd_series[1], 50.0)
-        self.assertLess(dd_series[2], 0)
+        # dd = balance - peak: 0 no pico, negativo quando abaixo
+        self.assertEqual(dd_series[0], 0.0)  # 1100 = novo pico
+        self.assertEqual(dd_series[1], -50.0)  # 1050 - 1100
+        self.assertLess(dd_series[2], 0)  # 900 - 1100 = -200
         self.assertLess(max_dd, 0)
 
 
