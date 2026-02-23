@@ -12,7 +12,14 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .forms import EmailAuthenticationForm, ProfileEditForm, ProfileForm, UserRegistrationForm
-from .models import Plan, Profile, User
+from .models import (
+    ExperienceLevel,
+    Plan,
+    PrimaryMarket,
+    Profile,
+    TradingStyle,
+    User,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -254,9 +261,15 @@ class ProfileEditFormTest(TestCase):
                 "state": "SP",
                 "country": "BR",
                 "timezone": "America/Sao_Paulo",
+                "experience_level": ExperienceLevel.BEGINNER,
+                "primary_market": PrimaryMarket.INDEX_FUTURES,
+                "trading_style": TradingStyle.DAY_TRADE,
+                "email_opt_in": True,
+                "initial_balance": "0",
+                "current_balance": "0",
             },
         )
-        self.assertTrue(form.is_valid())
+        self.assertTrue(form.is_valid(), form.errors)
         form.save()
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.city, "São Paulo")
