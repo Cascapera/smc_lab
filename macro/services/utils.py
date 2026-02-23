@@ -32,15 +32,20 @@ def parse_variation_percent(value: Optional[str]) -> Optional[float]:
     """Converte string percentual para decimal (ex.: '0,36%' -> 0.0036)."""
     if value is None:
         return None
-    text = str(value).strip()
+    text = (
+        str(value)
+        .strip()
+        .replace("\u2212", "-")  # Unicode minus → ASCII
+        .replace(" ", "")
+    )
     if not text:
         return None
 
-    match = re.search(r"([-+]?[\d.,]+)\s*%", text)
+    match = re.search(r"([-+]?[\d.,]+)%", text)
     if not match:
         return None
 
-    number = match.group(1).replace(" ", "").replace(",", ".").replace("\u2212", "-")
+    number = match.group(1).replace(" ", "").replace(",", ".")
     try:
         return float(number) / 100.0
     except ValueError:
