@@ -582,7 +582,7 @@ class RunAnalyticsLLMTest(TestCase):
     def test_levanta_analytics_llm_error_apos_retries(self, mock_settings):
         mock_settings.OPENAI_API_KEY = "sk-test"
         mock_settings.OPENAI_ANALYTICS_MODEL = "gpt-4o-mini"
-        with patch("trades.llm_service.OpenAI") as mock_openai:
+        with patch("openai.OpenAI") as mock_openai:
             mock_client = mock_openai.return_value
             mock_client.chat.completions.create.side_effect = Exception("API Error")
             with self.assertRaises(AnalyticsLLMError):
