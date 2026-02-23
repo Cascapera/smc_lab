@@ -257,12 +257,45 @@ ruff check . --fix   # corrige o que for possível
 
 ---
 
+## Cobertura de testes (70%)
+
+O CI exige **mínimo 70% de cobertura** para passar. Arquivos excluídos do cálculo: migrations, tests, settings, wsgi/asgi, management commands, locustfile.
+
+**Rodar localmente:**
+```bash
+pip install -r requirements-dev.txt
+coverage run manage.py test --settings=trader_portal.settings.ci
+coverage report --fail-under=70
+```
+
+**Relatório HTML (opcional):**
+```bash
+coverage html
+# Abra htmlcov/index.html no navegador
+```
+
+---
+
+## Como fazer o merge
+
+1. **No GitHub:** Abra um Pull Request de `feature/painel-smc` → `main`
+2. **Aguarde o CI** passar (lint + testes + cobertura)
+3. **Revise** e faça o merge (squash ou merge commit)
+4. **Localmente (após merge):**
+   ```bash
+   git checkout main
+   git pull origin main
+   git branch -d feature/painel-smc   # opcional: apagar branch local
+   ```
+
+---
+
 ## Próximos passos (opcional)
 
 Depois que o CI estiver estável, você pode adicionar:
 
-1. **Cobertura de testes:** exigir X% de cobertura.
-2. **CD (Deploy):** após o CI passar, fazer deploy automático (ex: Lightsail, Railway).
+1. **CD (Deploy):** após o CI passar, fazer deploy automático (ex: Lightsail, Railway).
+2. **Aumentar cobertura:** subir o `fail_under` em `.coveragerc` (ex.: 80%).
 
 ---
 
@@ -271,7 +304,8 @@ Depois que o CI estiver estável, você pode adicionar:
 ```
 Push/PR → Checkout → Python 3.13 → pip install → manage.py check
                                               → makemigrations --check
-                                              → manage.py test
+                                              → coverage run manage.py test
+                                              → coverage report --fail-under=70
                                                     ↓
                                             Verde = OK, Vermelho = Falhou
 ```
