@@ -200,8 +200,29 @@ python3 -c "from django.core.management.utils import get_random_secret_key; prin
 
 ---
 
-### **ETAPA 8: Configurar Backup Automático (Opcional)**
+### **ETAPA 8: Configurar Backup Automático (OBRIGATÓRIO em produção)**
 
+⚠️ **NUNCA rode `docker-compose down -v` no servidor!** O `-v` remove **todos** os volumes:
+- **postgres_data** → banco de dados (clientes, pagamentos, usuários)
+- **media_data** → imagens/screenshots dos trades (uploadadas pelos usuários)
+
+**Backup completo (banco + media) – use o script:**
+```bash
+./scripts/backup_db.sh
+# Gera: backups/backup_YYYY-MM-DD_HH-MM.sql e backups/media_YYYY-MM-DD_HH-MM.tar.gz
+# Copie ambos para local seguro (S3, outro servidor, etc.)
+```
+
+**Restaurar após perda de volumes:**
+```bash
+# 1. Banco
+docker compose exec -T postgres psql -U trader_user -d trader_portal < backups/backup_YYYY-MM-DD_HH-MM.sql
+
+# 2. Media (imagens)
+docker compose run --rm -v $(pwd)/backups:/backup web sh -c "rm -rf /app/media/* && tar xzf /backup/media_YYYY-MM-DD_HH-MM.tar.gz -C /app"
+```
+
+**Backup Lightsail:**
 1. No Lightsail, vá em **"Snapshots"**
 2. Configure **"Backup automático diário"**
 3. Mantenha 7 snapshots (custo adicional mínimo)

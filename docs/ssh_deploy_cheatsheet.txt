@@ -33,6 +33,8 @@ Atualizar codigo (git)
 Build/Deploy com Docker
 - docker-compose up -d --build
   Rebuilda imagens e sobe containers.
+- ATENCAO: NUNCA rode "docker-compose down -v" em PRODUCAO!
+  O -v remove volumes e APAGA: banco (postgres_data) E imagens (media_data).
 - docker-compose ps
   Status dos servicos.
 - docker-compose logs -f web
@@ -43,6 +45,8 @@ Build/Deploy com Docker
 Banco e Django (dentro do container)
 - docker-compose exec web python manage.py migrate
   Aplica migrations.
+- ./scripts/backup_db.sh
+  Backup completo (banco + imagens/media). Guarde em local seguro.
 - docker-compose exec web python manage.py collectstatic --noinput
   Atualiza arquivos estaticos.
 - docker-compose exec web python manage.py shell

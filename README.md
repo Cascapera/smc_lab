@@ -141,6 +141,7 @@ Consulte `docs/env_production_template.txt` para um template completo.
 - **Docker:** `docs/docker_cheatsheet.txt`
 - **SSH/Deploy:** `docs/ssh_deploy_cheatsheet.txt`
 - **Env produção:** `docs/env_production_template.txt`
+- **CI/CD:** `docs/CI_CD_EXPLICACAO.md` — explicação passo a passo do pipeline
 
 ---
 

@@ -1,7 +1,27 @@
 from django.contrib import admin
+from django.db.models import Count
+from django.shortcuts import render
+from django.urls import path
 from django.utils.html import format_html
 
 from .models import GlobalAIAnalyticsRun, Trade
+
+
+def operations_rank_view(request):
+    """Ranking de usuários por total de operações registradas."""
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
+    ranking = (
+        User.objects.filter(trades__isnull=False)
+        .annotate(total_operacoes=Count("trades"))
+        .order_by("-total_operacoes")
+    )
+    return render(
+        request,
+        "admin/trades/operations_rank.html",
+        {"ranking": ranking, "title": "Rank de operações por usuário"},
+    )
 
 
 @admin.register(Trade)
@@ -37,6 +57,17 @@ class TradeAdmin(admin.ModelAdmin):
     )
     date_hierarchy = "executed_at"
     ordering = ("-executed_at",)
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path(
+                "operations-rank/",
+                self.admin_site.admin_view(operations_rank_view),
+                name="trades_operations_rank",
+            ),
+        ]
+        return custom + urls
 
     def screenshot_link(self, obj: Trade):
         if obj.screenshot:
