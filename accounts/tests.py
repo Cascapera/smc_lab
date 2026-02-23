@@ -209,6 +209,12 @@ class ProfileFormTest(TestCase):
                 "privacy_accepted": False,
                 "country": "BR",
                 "timezone": "America/Sao_Paulo",
+                "experience_level": ExperienceLevel.BEGINNER,
+                "primary_market": PrimaryMarket.INDEX_FUTURES,
+                "trading_style": TradingStyle.DAY_TRADE,
+                "email_opt_in": True,
+                "initial_balance": "0",
+                "current_balance": "0",
             }
         )
         self.assertFalse(form.is_valid())
@@ -220,9 +226,15 @@ class ProfileFormTest(TestCase):
                 "privacy_accepted": True,
                 "country": "br",
                 "timezone": "America/Sao_Paulo",
+                "experience_level": ExperienceLevel.BEGINNER,
+                "primary_market": PrimaryMarket.INDEX_FUTURES,
+                "trading_style": TradingStyle.DAY_TRADE,
+                "email_opt_in": True,
+                "initial_balance": "0",
+                "current_balance": "0",
             }
         )
-        self.assertTrue(form.is_valid())
+        self.assertTrue(form.is_valid(), form.errors)
         self.assertEqual(form.cleaned_data["country"], "BR")
 
     def test_clean_timezone_default_quando_vazio(self):
@@ -232,9 +244,15 @@ class ProfileFormTest(TestCase):
                 "privacy_accepted": True,
                 "country": "BR",
                 "timezone": "",
+                "experience_level": ExperienceLevel.BEGINNER,
+                "primary_market": PrimaryMarket.INDEX_FUTURES,
+                "trading_style": TradingStyle.DAY_TRADE,
+                "email_opt_in": True,
+                "initial_balance": "0",
+                "current_balance": "0",
             }
         )
-        self.assertTrue(form.is_valid())
+        self.assertTrue(form.is_valid(), form.errors)
         self.assertEqual(form.cleaned_data["timezone"], "America/Sao_Paulo")
 
 
@@ -303,6 +321,12 @@ class RegisterViewTest(TestCase):
                 "privacy_accepted": "on",
                 "country": "BR",
                 "timezone": "America/Sao_Paulo",
+                "experience_level": ExperienceLevel.BEGINNER,
+                "primary_market": PrimaryMarket.INDEX_FUTURES,
+                "trading_style": TradingStyle.DAY_TRADE,
+                "email_opt_in": True,
+                "initial_balance": "0",
+                "current_balance": "0",
             },
             follow=False,
         )
