@@ -57,8 +57,9 @@ class UserRegistrationForm(CustomUserCreationForm):
 
     def save(self, commit: bool = True):
         user = super().save(commit=False)
-        # Usa o e-mail como username para permitir login por e-mail
-        user.username = user.email.lower()
+        # Normaliza e-mail e usa como username para permitir login por e-mail
+        user.email = user.email.lower()
+        user.username = user.email
         if commit:
             user.save()
         return user
