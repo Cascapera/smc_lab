@@ -394,6 +394,12 @@ class ProfileEditViewTest(TestCase):
                 "state": "RJ",
                 "country": "BR",
                 "timezone": "America/Sao_Paulo",
+                "experience_level": ExperienceLevel.BEGINNER,
+                "primary_market": PrimaryMarket.INDEX_FUTURES,
+                "trading_style": TradingStyle.DAY_TRADE,
+                "email_opt_in": True,
+                "initial_balance": "0",
+                "current_balance": "0",
             },
         )
         self.assertEqual(response.status_code, 302)
