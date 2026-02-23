@@ -205,8 +205,9 @@ class ExecuteCycleTest(TestCase):
     def test_execute_cycle_persiste_variacao_e_score(self, mock_fetch):
         from macro.services.network import FetchOutcome
 
+        # +50% -> variation_decimal=0.5; com value_base=0.5, score=1 (0.5 >= 0.5)
         mock_fetch.return_value = FetchOutcome(
-            html='<span data-test="instrument-price-change-percent">+0,50%</span>',
+            html='<span data-test="instrument-price-change-percent">+50%</span>',
             status="ok",
         )
         measurement_time = timezone.make_aware(datetime(2025, 2, 24, 10, 5, 0))
