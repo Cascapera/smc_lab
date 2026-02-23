@@ -5,6 +5,8 @@ Testes do app accounts - autenticação, perfis e registro.
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.contrib.messages.middleware import MessageMiddleware
+from django.contrib.sessions.middleware import SessionMiddleware
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -411,6 +413,14 @@ class SessionStatusViewTest(TestCase):
 # ---------------------------------------------------------------------------
 
 
+def _add_session_and_messages(request):
+    """Adiciona session e messages ao request (necessário para RequestFactory)."""
+    SessionMiddleware(lambda r: r).process_request(request)
+    MessageMiddleware(lambda r: r).process_request(request)
+    request.session.save()
+    return request
+
+
 class PlanRequiredMixinTest(TestCase):
     """Testes do PlanRequiredMixin."""
 
@@ -439,7 +449,7 @@ class PlanRequiredMixinTest(TestCase):
 
     def test_usuario_free_redirecionado_ao_acessar_recurso_basic(self):
         view = self._view_protected_by_plan(Plan.BASIC)
-        request = self.factory.get("/test/")
+        request = _add_session_and_messages(self.factory.get("/test/"))
         request.user = self.user_free
 
         response = view(request)
@@ -448,7 +458,7 @@ class PlanRequiredMixinTest(TestCase):
 
     def test_usuario_basic_acessa_recurso_basic(self):
         view = self._view_protected_by_plan(Plan.BASIC)
-        request = self.factory.get("/test/")
+        request = _add_session_and_messages(self.factory.get("/test/"))
         request.user = self.user_basic
 
         response = view(request)
@@ -457,7 +467,7 @@ class PlanRequiredMixinTest(TestCase):
 
     def test_usuario_premium_acessa_recurso_basic(self):
         view = self._view_protected_by_plan(Plan.BASIC)
-        request = self.factory.get("/test/")
+        request = _add_session_and_messages(self.factory.get("/test/"))
         request.user = self.user_premium
 
         response = view(request)
@@ -486,7 +496,7 @@ class StaffRequiredMixinTest(TestCase):
 
     def test_usuario_normal_redirecionado(self):
         view = self._view_protected_by_staff()
-        request = self.factory.get("/test/")
+        request = _add_session_and_messages(self.factory.get("/test/"))
         request.user = self.user_normal
 
         response = view(request)
@@ -495,7 +505,7 @@ class StaffRequiredMixinTest(TestCase):
 
     def test_usuario_staff_acessa(self):
         view = self._view_protected_by_staff()
-        request = self.factory.get("/test/")
+        request = _add_session_and_messages(self.factory.get("/test/"))
         request.user = self.user_staff
 
         response = view(request)
