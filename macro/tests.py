@@ -3,6 +3,7 @@ Testes do app macro - utils, parsers, collector e views.
 """
 from datetime import datetime
 from unittest.mock import patch
+from urllib.parse import urlencode
 
 from django.test import TestCase
 from django.urls import reverse
@@ -312,7 +313,7 @@ class LatestVariationsViewTest(TestCase):
         )
         since = (timezone.now() - timezone.timedelta(days=1)).isoformat()
         response = self.client.get(
-            reverse("macro:latest_variations") + f"?since={since}"
+            reverse("macro:latest_variations") + "?" + urlencode({"since": since})
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()["results"]), 0)
