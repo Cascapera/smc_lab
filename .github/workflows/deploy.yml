@@ -1,0 +1,60 @@
+# =============================================================================
+# CD — Entrega Contínua do SMC Lab
+# =============================================================================
+# Deploy automático para Lightsail após push na main.
+# Requer: GitHub Secrets (SSH_HOST, SSH_USER, SSH_PRIVATE_KEY, DEPLOY_PATH)
+# =============================================================================
+
+name: Deploy
+
+on:
+  workflow_dispatch:  # Manual: Actions → Deploy → Run workflow
+  # Descomente abaixo quando quiser deploy automático a cada push na main:
+  # push:
+  #   branches: [main]
+
+# Só um deploy por vez
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy para Lightsail
+    runs-on: ubuntu-latest
+    # Opcional: descomente para exigir aprovação antes do deploy
+    # environment: production
+
+    steps:
+      - name: Configurar SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Deploy via SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${SSH_USER}@${SSH_HOST} "
+            set -e
+            cd ${DEPLOY_PATH:-~/app}
+            echo '>>> Git pull'
+            git fetch origin main
+            git reset --hard origin/main
+            echo '>>> Docker Compose build e up'
+            docker compose pull
+            docker compose build --no-cache web worker beat
+            docker compose up -d
+            echo '>>> Aguardando containers'
+            sleep 15
+            echo '>>> Migrations'
+            docker compose exec -T web python manage.py migrate --noinput
+            echo '>>> Collectstatic'
+            docker compose exec -T web python manage.py collectstatic --noinput --clear
+            echo '>>> Deploy concluído'
+          "
