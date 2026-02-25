@@ -148,6 +148,10 @@ Configuração em `pyproject.toml`.
 
 ---
 
+## Operações (produção)
+
+- **Worker Watchdog** — Script que reinicia o Celery worker quando parar ou ficar inativo. Executa via cron a cada 5 min. Instalação: `bash scripts/install_worker_watchdog.sh` (já incluído no deploy). Log: `logs/worker_watchdog.log`.
+
 ## Documentação adicional
 
 - **Deploy:** `docs/deploy_lightsail.md`

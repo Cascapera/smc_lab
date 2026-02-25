@@ -7,6 +7,7 @@ services:
       - "8000:8000"
     volumes:
       - media_data:/app/media
+      - ./logs:/app/logs
     env_file: .env
     depends_on:
       - postgres
@@ -17,6 +18,8 @@ services:
     restart: unless-stopped
     command: celery -A trader_portal worker -l info --pool=solo --concurrency=1
     env_file: .env
+    volumes:
+      - ./logs:/app/logs
     depends_on:
       - postgres
       - redis
@@ -26,6 +29,8 @@ services:
     restart: unless-stopped
     command: celery -A trader_portal beat -l info
     env_file: .env
+    volumes:
+      - ./logs:/app/logs
     depends_on:
       - postgres
       - redis

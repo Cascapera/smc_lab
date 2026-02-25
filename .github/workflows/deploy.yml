@@ -43,6 +43,8 @@ jobs:
             ${SSH_USER}@${SSH_HOST} "
             set -e
             cd ${DEPLOY_PATH:-~/app}
+            echo '>>> Backup (DB + media)'
+            ./scripts/backup_db.sh
             echo '>>> Git pull'
             git fetch origin main
             git reset --hard origin/main
@@ -56,5 +58,7 @@ jobs:
             docker compose exec -T web python manage.py migrate --noinput
             echo '>>> Collectstatic'
             docker compose exec -T web python manage.py collectstatic --noinput --clear
+            echo '>>> Worker watchdog (reinicia worker se parar)'
+            bash scripts/install_worker_watchdog.sh || true
             echo '>>> Deploy concluído'
           "
