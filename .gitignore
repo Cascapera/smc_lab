@@ -10,8 +10,9 @@ __pycache__/
 *$py.class
 
 # Configurações locais
-*.env
+.env
 .env.*
+!.env.example
 
 # Chaves SSH (deploy CD - nunca commitar)
 deploy_key
