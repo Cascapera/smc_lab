@@ -1,4 +1,4 @@
-# SMC Lab — Portal para Traders
+# SMC Lab — Django SaaS Backend (REST APIs + Celery/Redis + PostgreSQL + Docker + AWS)
 
 [![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Django](https://img.shields.io/badge/Django-5.2-092E20?logo=django&logoColor=white)](https://www.djangoproject.com/)
@@ -230,3 +230,4 @@ Consulte `.env.example` para dev local; `docs/env_production_template.txt` para 
 ## Licença
 
 Projeto em execução. www.smclab.com.br
+
