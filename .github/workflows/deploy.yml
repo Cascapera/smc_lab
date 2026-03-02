@@ -44,7 +44,7 @@ jobs:
             set -e
             cd ${DEPLOY_PATH:-~/app}
             echo '>>> Backup (DB + media)'
-            ./scripts/backup_db.sh
+            bash scripts/backup_db.sh
             echo '>>> Git pull'
             git fetch origin main
             git reset --hard origin/main
