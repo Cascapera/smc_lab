@@ -19,12 +19,14 @@ if not user:
 print('Testando /admin/ com usuário:', user.email)
 c = Client()
 c.force_login(user)
+# Usar host real para evitar DisallowedHost (testserver não está em ALLOWED_HOSTS)
+host = os.environ.get('DEBUG_ADMIN_HOST', 'www.smclab.com.br')
 # Client em DEBUG=False não expõe exceção; forçar captura via middleware
 from django.conf import settings
 old_debug = settings.DEBUG
 settings.DEBUG = True
 try:
-    r = c.get('/admin/')
+    r = c.get('/admin/', HTTP_HOST=host)
     print('Status:', r.status_code)
     if r.status_code == 500:
         # Com DEBUG=True o HTML da página de erro contém o traceback
