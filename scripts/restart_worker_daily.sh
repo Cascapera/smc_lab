@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Reinicia o Celery worker diariamente às 06:00 (limpa processos órfãos)
+# Reinicia o Celery worker 3x/dia (06:04, 13:04, 22:04) - limpa processos órfãos
 # =============================================================================
 
 set -euo pipefail
@@ -16,6 +16,6 @@ log() {
 }
 
 cd "$PROJECT_DIR"
-log "Reiniciando worker (manutenção diária)..."
+log "Reiniciando worker (manutenção programada)..."
 docker compose restart worker
 log "Worker reiniciado."
