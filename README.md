@@ -204,6 +204,7 @@ Consulte `.env.example` para dev local; `docs/env_production_template.txt` para 
 - **CI/CD** — Deploy via GitHub Actions (SSH) após push na `main`; secrets: `SSH_HOST`, `SSH_USER`, `SSH_PRIVATE_KEY`
 - **Variáveis** — `.env` no servidor; nunca commitado
 - **Worker Watchdog** — Script cron que reinicia Celery worker se parar; `scripts/install_worker_watchdog.sh`
+- **Reinício diário** — Worker reiniciado às 06:00 para limpar processos órfãos; `logs/worker_restart_daily.log`
 
 ---
 

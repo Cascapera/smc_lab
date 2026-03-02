@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Instala o cron do Worker Watchdog no servidor
+# Instala o cron do Worker Watchdog e reinício diário no servidor
 # =============================================================================
 # Execute no servidor (via SSH): cd ~/app && bash scripts/install_worker_watchdog.sh
 # =============================================================================
@@ -10,20 +10,36 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 WATCHDOG_SCRIPT="$PROJECT_DIR/scripts/worker_watchdog.sh"
-CRON_LINE="*/5 * * * * $WATCHDOG_SCRIPT"
+RESTART_SCRIPT="$PROJECT_DIR/scripts/restart_worker_daily.sh"
+CRON_WATCHDOG="*/5 * * * * $WATCHDOG_SCRIPT"
+CRON_RESTART="0 6 * * * $RESTART_SCRIPT"
 
-# Tornar executável
+# Tornar executáveis
 chmod +x "$WATCHDOG_SCRIPT"
+chmod +x "$RESTART_SCRIPT"
 
-# Verificar se já está instalado
-if crontab -l 2>/dev/null | grep -q "worker_watchdog"; then
-  echo "Watchdog já está no crontab. Nada a fazer."
-  exit 0
+CRONTAB_NEW="$(crontab -l 2>/dev/null || true)"
+
+# Watchdog (a cada 5 min)
+if ! echo "$CRONTAB_NEW" | grep -q "worker_watchdog"; then
+  CRONTAB_NEW="${CRONTAB_NEW}${CRONTAB_NEW:+$'\n'}$CRON_WATCHDOG"
+  echo "✓ Worker watchdog adicionado (executa a cada 5 minutos)."
+else
+  echo "Watchdog já está no crontab."
 fi
 
-# Adicionar ao crontab
-(crontab -l 2>/dev/null || true; echo "$CRON_LINE") | crontab -
-echo "✓ Worker watchdog instalado. Executa a cada 5 minutos."
-echo "  Log: $PROJECT_DIR/logs/worker_watchdog.log"
+# Reinício diário às 06:00
+if ! echo "$CRONTAB_NEW" | grep -q "restart_worker_daily"; then
+  CRONTAB_NEW="${CRONTAB_NEW}${CRONTAB_NEW:+$'\n'}$CRON_RESTART"
+  echo "✓ Reinício diário do worker adicionado (06:00)."
+else
+  echo "Reinício diário já está no crontab."
+fi
+
+echo "$CRONTAB_NEW" | crontab -
 echo ""
-echo "Para remover: crontab -e  (e apague a linha do worker_watchdog)"
+echo "Logs:"
+echo "  Watchdog: $PROJECT_DIR/logs/worker_watchdog.log"
+echo "  Reinício diário: $PROJECT_DIR/logs/worker_restart_daily.log"
+echo ""
+echo "Para remover: crontab -e  (e apague as linhas)"
