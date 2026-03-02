@@ -26,8 +26,8 @@ from django.conf import settings
 old_debug = settings.DEBUG
 settings.DEBUG = True
 try:
-    r = c.get('/admin/', HTTP_HOST=host)
-    print('Status:', r.status_code)
+    r = c.get('/admin/', HTTP_HOST=host, follow=True)
+    print('Status final:', r.status_code, '(seguindo redirects)')
     if r.status_code == 500:
         # Com DEBUG=True o HTML da página de erro contém o traceback
         content = r.content.decode(errors='replace')
