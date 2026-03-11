@@ -94,8 +94,9 @@ def execute_cycle(measurement_time: Optional[datetime] = None) -> None:
 
     for asset in assets:
         try:
-            # TradingView desativado: usar fallback sem Playwright (evita travamentos)
-            if asset.source_key == SourceChoices.TRADINGVIEW:
+            if asset.source_key == SourceChoices.TRADINGVIEW and not _tradingview_window_open(
+                measurement_time
+            ):
                 fallback = last_variations.get(asset.id)
                 variation_decimal = fallback["variation_decimal"] if fallback else None
                 variation_text = fallback["variation_text"] if fallback else None
@@ -108,7 +109,7 @@ def execute_cycle(measurement_time: Optional[datetime] = None) -> None:
                         variation_text=variation_text,
                         variation_decimal=variation_decimal,
                         status="fallback" if fallback else "no_data",
-                        block_reason="tradingview_disabled",
+                        block_reason="tradingview_off_hours",
                         source_excerpt="",
                         market_phase=market_phase or "",
                         payload_bytes=None,

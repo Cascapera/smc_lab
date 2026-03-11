@@ -5,9 +5,6 @@
 
 set -euo pipefail
 
-# Cron tem PATH mínimo; garantir que docker seja encontrado
-export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
-
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 LOG_FILE="${LOG_FILE:-$PROJECT_DIR/logs/worker_restart_daily.log}"

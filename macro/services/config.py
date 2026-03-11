@@ -19,8 +19,7 @@ FETCH_TIMEOUT = 25
 FALLBACK_HOST = "https://r.jina.ai"
 INVESTING_XHR_ENABLED = True
 INVESTING_XHR_CACHE_PATH = ".cache/investing_xhr_cache.json"
-# TTL maior = menos rediscovery via Playwright (7 dias em vez de 3)
-INVESTING_XHR_CACHE_TTL_HOURS = 168
+INVESTING_XHR_CACHE_TTL_HOURS = 72
 TRADINGVIEW_XHR_ENABLED = True
 TRADINGVIEW_XHR_CACHE_PATH = ".cache/tradingview_xhr_cache.json"
 TRADINGVIEW_XHR_CACHE_TTL_HOURS = 24
@@ -40,9 +39,8 @@ PROXY_USE_FOR_PLAYWRIGHT = os.getenv("PROXY_USE_FOR_PLAYWRIGHT", "true").strip()
     "true",
     "yes",
 }
-# Timeout menor = falha mais rápido, evita travamentos longos (60s → 25s)
-PLAYWRIGHT_TIMEOUT_MS = int(os.getenv("PLAYWRIGHT_TIMEOUT_MS", "25000"))
-PLAYWRIGHT_WAIT_MS = int(os.getenv("PLAYWRIGHT_WAIT_MS", "2000"))
+PLAYWRIGHT_TIMEOUT_MS = int(os.getenv("PLAYWRIGHT_TIMEOUT_MS", "60000"))
+PLAYWRIGHT_WAIT_MS = int(os.getenv("PLAYWRIGHT_WAIT_MS", "4000"))
 
 # Agenda
 TARGET_INTERVAL_MINUTES = 5
