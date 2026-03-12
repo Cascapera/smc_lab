@@ -1,12 +1,24 @@
 {% extends "base.html" %}
 
 {% block content %}
+<style>
+  .dash-summary{ display:flex; flex-wrap:wrap; gap:1rem; margin-bottom:2rem; }
+  .dash-summary > div{ flex:1; min-width:170px; background:#1e293b; padding:1rem; border-radius:8px; }
+  .dash-banner{ margin-bottom:1.5rem; padding:14px 16px; border-radius:12px; border:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.04); display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; }
+  .dash-filters{ display:grid; gap:0.75rem; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); align-items:end; margin:1rem 0; }
+  .dash-table-wrap{ overflow-x:auto; }
+  @media (max-width: 600px){
+    .dash-summary > div{ min-width:100%; }
+    .dash-banner{ flex-direction:column; align-items:flex-start; }
+    .dash-filters{ grid-template-columns:1fr; }
+  }
+</style>
 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:space-between;margin-bottom:0.5rem;">
   <h1 style="margin:0;">Dashboard Avançado</h1>
   <div style="font-size:13px;color:#cbd5e1;opacity:.9;">Versão exclusiva para usuários premium.</div>
 </div>
 
-<div style="margin-bottom:1.5rem; padding:14px 16px; border-radius:12px; border:1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.04); display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between;">
+<div class="dash-banner">
   <div style="display:flex; gap:10px; align-items:center; color:#e2e8f0;">
     <span style="font-size:18px;">🚀</span>
     <div>
@@ -18,55 +30,19 @@
 </div>
 
 {% with adv=advanced %}
-<div style="display:flex;flex-wrap:wrap;gap:1rem;margin-bottom:2rem;">
-    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:170px;">
-        <strong>Profit factor</strong>
-        <div>{{ adv.profit_factor }}</div>
-    </div>
-    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:170px;">
-        <strong>Payoff</strong>
-        <div>{{ adv.payoff }}</div>
-    </div>
-    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:170px;">
-        <strong>Max drawdown</strong>
-        <div>R$ {{ adv.max_drawdown }} ({{ adv.max_drawdown_pct }}%)</div>
-    </div>
-    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:170px;">
-        <strong>Maior sequência de ganhos</strong>
-        <div>{{ adv.longest_win_streak }}</div>
-    </div>
-    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:170px;">
-        <strong>Maior sequência de perdas</strong>
-        <div>{{ adv.longest_loss_streak }}</div>
-    </div>
-    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:170px;">
-        <strong>Média de ganhos</strong>
-        <div>R$ {{ adv.avg_gain }}</div>
-    </div>
-    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:170px;">
-        <strong>Média de perdas</strong>
-        <div>R$ {{ adv.avg_loss }}</div>
-    </div>
-    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:170px;">
-        <strong>Melhor trade</strong>
-        <div>R$ {{ adv.best_trade }}</div>
-    </div>
-    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:170px;">
-        <strong>Pior trade</strong>
-        <div>R$ {{ adv.worst_trade }}</div>
-    </div>
-    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:170px;">
-        <strong>Total trades</strong>
-        <div>{{ adv.total_trades }}</div>
-    </div>
-    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:170px;">
-        <strong>Win rate</strong>
-        <div>{{ adv.win_rate }}%</div>
-    </div>
-    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:170px;">
-        <strong>Resultado acumulado</strong>
-        <div>R$ {{ adv.total_profit }}</div>
-    </div>
+<div class="dash-summary">
+    <div><strong>Profit factor</strong><div>{{ adv.profit_factor }}</div></div>
+    <div><strong>Payoff</strong><div>{{ adv.payoff }}</div></div>
+    <div><strong>Max drawdown</strong><div>R$ {{ adv.max_drawdown }} ({{ adv.max_drawdown_pct }}%)</div></div>
+    <div><strong>Maior sequência de ganhos</strong><div>{{ adv.longest_win_streak }}</div></div>
+    <div><strong>Maior sequência de perdas</strong><div>{{ adv.longest_loss_streak }}</div></div>
+    <div><strong>Média de ganhos</strong><div>R$ {{ adv.avg_gain }}</div></div>
+    <div><strong>Média de perdas</strong><div>R$ {{ adv.avg_loss }}</div></div>
+    <div><strong>Melhor trade</strong><div>R$ {{ adv.best_trade }}</div></div>
+    <div><strong>Pior trade</strong><div>R$ {{ adv.worst_trade }}</div></div>
+    <div><strong>Total trades</strong><div>{{ adv.total_trades }}</div></div>
+    <div><strong>Win rate</strong><div>{{ adv.win_rate }}%</div></div>
+    <div><strong>Resultado acumulado</strong><div>R$ {{ adv.total_profit }}</div></div>
 </div>
 {% endwith %}
 
@@ -88,7 +64,7 @@
     <a href="{% url 'trades:trade_add' %}" class="btn" style="padding:10px 14px;font-size:12px;">Registrar novo trade</a>
   </div>
 
-  <form method="get" style="margin:1rem 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:0.75rem;align-items:end;">
+  <form method="get" class="dash-filters">
     <select name="market" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;min-width:140px;">
       <option value="">Mercado</option>
       {% for value,label in adv_trade_choices.markets %}
@@ -162,8 +138,8 @@
   </form>
 
   {% if adv_trades_page %}
-  <div style="border:1px solid #334155; border-radius:12px; background:#0b1220; padding:1rem;">
-    <table style="width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px;">
+  <div class="dash-table-wrap" style="border:1px solid #334155; border-radius:12px; background:#0b1220; padding:1rem;">
+    <table style="width:100%;min-width:900px;border-collapse:collapse;table-layout:fixed;font-size:12px;">
       <thead>
         <tr>
           <th style="text-align:left;padding:0.4rem;border-bottom:1px solid #334155;">Data</th>

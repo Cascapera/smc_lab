@@ -1,11 +1,22 @@
 {% extends "base.html" %}
 
 {% block content %}
+<style>
+  .dash-summary{ display:flex; flex-wrap:wrap; gap:1rem; margin-bottom:2rem; }
+  .dash-summary > div{ flex:1; min-width:180px; background:#1e293b; padding:1rem; border-radius:8px; }
+  .dash-banner{ margin-bottom:1.5rem; padding:14px 16px; border-radius:12px; border:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.04); display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; }
+  .dash-filters{ display:grid; gap:0.5rem; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); align-items:end; margin-bottom:1rem; }
+  @media (max-width: 600px){
+    .dash-summary > div{ min-width:100%; }
+    .dash-banner{ flex-direction:column; align-items:flex-start; }
+    .dash-filters{ grid-template-columns:1fr; }
+  }
+</style>
 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:0.5rem;">
   <h1 style="margin:0;">Dashboard</h1>
 </div>
 
-<div style="margin-bottom:1.5rem; padding:14px 16px; border-radius:12px; border:1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.04); display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between;">
+<div class="dash-banner">
   <div style="display:flex; gap:10px; align-items:center; color:#e2e8f0;">
     <span style="font-size:18px;">⚡</span>
     <div>
@@ -17,40 +28,15 @@
 </div>
 
 {% with summary=dashboard.summary %}
-<div style="display:flex;flex-wrap:wrap;gap:1rem;margin-bottom:2rem;">
-    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:180px;">
-        <strong>Total trades</strong>
-        <div>{{ summary.total_trades }}</div>
-    </div>
-    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:180px;">
-        <strong>Win rate</strong>
-        <div>{{ summary.win_rate }}%</div>
-    </div>
-    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:180px;">
-        <strong>Resultado acumulado</strong>
-        <div>R$ {{ summary.total_profit }}</div>
-    </div>
-    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:180px;">
-        <strong>Saldo atual</strong>
-        <div>R$ {{ summary.current_balance }}</div>
-        <small>Inicial: R$ {{ summary.initial_balance }}</small>
-    </div>
-    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:180px;">
-        <strong>Melhor trade</strong>
-        <div>R$ {{ summary.best_trade }}</div>
-    </div>
-    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:180px;">
-        <strong>Pior trade</strong>
-        <div>R$ {{ summary.worst_trade }}</div>
-    </div>
-    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:180px;">
-        <strong>Média de ganhos</strong>
-        <div>R$ {{ summary.avg_gain }}</div>
-    </div>
-    <div style="background:#1e293b;padding:1rem;border-radius:8px;flex:1;min-width:180px;">
-        <strong>Média de perdas</strong>
-        <div>R$ {{ summary.avg_loss }}</div>
-    </div>
+<div class="dash-summary">
+    <div><strong>Total trades</strong><div>{{ summary.total_trades }}</div></div>
+    <div><strong>Win rate</strong><div>{{ summary.win_rate }}%</div></div>
+    <div><strong>Resultado acumulado</strong><div>R$ {{ summary.total_profit }}</div></div>
+    <div><strong>Saldo atual</strong><div>R$ {{ summary.current_balance }}</div><small>Inicial: R$ {{ summary.initial_balance }}</small></div>
+    <div><strong>Melhor trade</strong><div>R$ {{ summary.best_trade }}</div></div>
+    <div><strong>Pior trade</strong><div>R$ {{ summary.worst_trade }}</div></div>
+    <div><strong>Média de ganhos</strong><div>R$ {{ summary.avg_gain }}</div></div>
+    <div><strong>Média de perdas</strong><div>R$ {{ summary.avg_loss }}</div></div>
 </div>
 {% endwith %}
 
@@ -66,7 +52,7 @@
 <section style="margin-bottom:2rem;">
     <h2>Trades do usuário</h2>
 
-<form method="get" style="margin-bottom:1rem; display:grid; gap:0.5rem; grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); align-items:end;">
+<form method="get" class="dash-filters">
         <label style="display:flex; flex-direction:column; gap:4px;">
             <span style="font-size:12px; color:#cbd5e1;">Mercado</span>
             <select name="market" style="padding:8px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#e2e8f0;">
@@ -137,7 +123,7 @@
             </td>
             <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ trade.symbol }}</td>
             <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ trade.get_market_display }}</td>
-            <td style="padding:0.5rem;border-bottom:1e293b;">{{ trade.get_direction_display }}</td>
+            <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ trade.get_direction_display }}</td>
             <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ trade.get_setup_display }}</td>
             <td style="padding:0.5rem;border-bottom:1px solid #1e293b;">{{ trade.get_entry_type_display }}</td>
             <td style="padding:0.5rem;text-align:right;border-bottom:1px solid #1e293b;">R$ {{ trade.profit_amount }}</td>
