@@ -23,6 +23,8 @@ services:
     depends_on:
       - postgres
       - redis
+    # Tempo para o worker terminar a tarefa em andamento antes do SIGKILL (coleta pode levar minutos)
+    stop_grace_period: 5m
 
   beat:
     build: .

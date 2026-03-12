@@ -217,6 +217,13 @@ CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default=CELERY_BROKER_URL)
 CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_TASK_ALWAYS_EAGER", default=False)
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_ENABLE_UTC = USE_TZ
+# Evita warning no Celery 6+: retry de conexão com broker na inicialização
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+# Se o worker receber SIGTERM, espera até 5 min para a tarefa atual terminar
+CELERY_WORKER_GRACEFUL_TIMEOUT = 300
+# Tarefa re-enfileirada se worker morrer antes de concluir (evita perda de coleta)
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
 CELERY_BEAT_SCHEDULE = {
     "macro-collect-every-5min": {
         "task": "macro.tasks.collect_macro_cycle",
