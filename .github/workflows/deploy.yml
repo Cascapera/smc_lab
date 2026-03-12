@@ -51,6 +51,8 @@ jobs:
             echo '>>> Docker Compose build e up'
             docker compose pull
             docker compose build --no-cache web worker beat
+            echo '>>> Parando worker e beat antes de recriar (evita erro ao remover container em execução)'
+            docker compose stop worker beat || true
             docker compose up -d
             echo '>>> Aguardando containers'
             sleep 15
