@@ -11,7 +11,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 LOG_FILE="${LOG_FILE:-$PROJECT_DIR/logs/worker_watchdog.log}"
-PING_TIMEOUT="${PING_TIMEOUT:-15}"
+# Coleta macro (Playwright) pode levar 5+ min; ping curto causava restart durante a tarefa
+PING_TIMEOUT="${PING_TIMEOUT:-360}"
 
 mkdir -p "$(dirname "$LOG_FILE")"
 
