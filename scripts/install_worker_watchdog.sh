@@ -12,7 +12,7 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 WATCHDOG_SCRIPT="$PROJECT_DIR/scripts/worker_watchdog.sh"
 RESTART_SCRIPT="$PROJECT_DIR/scripts/restart_worker_daily.sh"
 DOCKER_PRUNE_SCRIPT="$PROJECT_DIR/scripts/docker_prune.sh"
-CRON_WATCHDOG="*/5 * * * * $WATCHDOG_SCRIPT"
+CRON_WATCHDOG="*/18 * * * * $WATCHDOG_SCRIPT"
 CRON_RESTART="4 6,13,22 * * * $RESTART_SCRIPT"
 CRON_DOCKER_PRUNE="0 3 * * 0 $DOCKER_PRUNE_SCRIPT"
 
@@ -23,13 +23,10 @@ chmod +x "$DOCKER_PRUNE_SCRIPT"
 
 CRONTAB_NEW="$(crontab -l 2>/dev/null || true)"
 
-# Watchdog (a cada 5 min)
-if ! echo "$CRONTAB_NEW" | grep -q "worker_watchdog"; then
-  CRONTAB_NEW="${CRONTAB_NEW}${CRONTAB_NEW:+$'\n'}$CRON_WATCHDOG"
-  echo "✓ Worker watchdog adicionado (executa a cada 5 minutos)."
-else
-  echo "Watchdog já está no crontab."
-fi
+# Watchdog (a cada 18 min - evita coincidir com coleta de 5 em 5 min)
+CRONTAB_NEW="$(echo "$CRONTAB_NEW" | grep -v "worker_watchdog" || true)"
+CRONTAB_NEW="${CRONTAB_NEW}${CRONTAB_NEW:+$'\n'}$CRON_WATCHDOG"
+echo "✓ Worker watchdog configurado (executa a cada 18 minutos)."
 
 # Reinício do worker 3x/dia (06:04, 13:04, 22:04 - entre ciclos de 5 min)
 CRONTAB_NEW="$(echo "$CRONTAB_NEW" | grep -v "restart_worker_daily" || true)"
