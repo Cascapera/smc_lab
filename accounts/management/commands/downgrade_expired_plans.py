@@ -10,6 +10,4 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         count = downgrade_expired_plans()
-        self.stdout.write(
-            self.style.SUCCESS(f"{count} perfil(is) atualizado(s) para Free.")
-        )
+        self.stdout.write(self.style.SUCCESS(f"{count} perfil(is) atualizado(s) para Free."))
