@@ -360,10 +360,25 @@ class MercadoPagoWebhookView(View):
         if user_id and plan_key and plan:
             subscription = Subscription.objects.filter(user_id=user_id, plan_key=plan_key).first()
 
-        if status == PaymentStatus.APPROVED and subscription:
-            _apply_plan(subscription.user.profile, subscription.plan_key, subscription.plan)
-        elif status in {PaymentStatus.CHARGEDBACK, PaymentStatus.REFUNDED} and subscription:
-            _maybe_revoke_plan(subscription.user.profile)
+        if status == PaymentStatus.APPROVED:
+            if subscription:
+                _apply_plan(subscription.user.profile, subscription.plan_key, subscription.plan)
+            else:
+                # Pagamento one-time: não cria Subscription no checkout; aplicar direto do metadata
+                profile = Profile.objects.filter(user_id=user_id).first()
+                if profile:
+                    _apply_plan(profile, plan_key, plan)
+                    logger.info(
+                        "[payments] Plano aplicado via webhook (one-time) para user_id=%s: %s",
+                        user_id,
+                        plan_key,
+                    )
+        elif status in {PaymentStatus.CHARGEDBACK, PaymentStatus.REFUNDED}:
+            profile = Profile.objects.filter(user_id=user_id).first() if user_id else None
+            if subscription:
+                _maybe_revoke_plan(subscription.user.profile)
+            elif profile:
+                _maybe_revoke_plan(profile)
 
         return HttpResponse(status=200)
 

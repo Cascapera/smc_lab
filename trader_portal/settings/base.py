@@ -233,6 +233,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "discord_integration.tasks.sync_all_discord_roles",
         "schedule": crontab(minute=0, hour=4),
     },
+    "downgrade-expired-plans-daily": {
+        "task": "accounts.tasks.downgrade_expired_plans",
+        "schedule": crontab(minute=0, hour=5),
+    },
 }
 
 # --------------------------------------------------------------------------------------
