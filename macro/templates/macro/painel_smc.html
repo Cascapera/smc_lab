@@ -335,7 +335,7 @@
   let flowChart = null;
 
   async function updatePanel() {
-    const scores = await fetchScores(60);
+    const scores = await fetchScores(40);
     const variations = await fetchVariations(200);
 
     const latest = (scores || [])[0] || null;
