@@ -12,20 +12,20 @@ www.smclab.com.br
 
 ## 1️⃣ Project Overview
 
-Backend SaaS desenvolvido com Django para registro de operações de trading, análise com Smart Money Concepts (SMC), painel macro em tempo quase real e assinaturas com Mercado Pago. Utiliza arquitetura em camadas, processamento assíncrono com Celery + Redis, banco PostgreSQL e integração com APIs externas (Mercado Pago, Discord, OpenAI). Aplicação containerizada e preparada para deploy em AWS Lightsail.
+SaaS backend built with Django for recording trading operations, analysis with Smart Money Concepts (SMC), a near–real-time macro dashboard, and Mercado Pago subscriptions. It uses a layered architecture, asynchronous processing with Celery + Redis, a PostgreSQL database, and integration with external APIs (Mercado Pago, Discord, OpenAI). The application is containerized and ready for deployment on AWS Lightsail.
 
 ---
 
 ## 2️⃣ Key Features
 
-- **Journal de trades estruturado** — Cadastro com mercado, timeframe, setup SMC, trigger, P&D, screenshots e validações
-- **Análise por IA** — Resumos e insights sobre o journal via OpenAI GPT-4o mini
-- **Painel macro** — Coleta automática (a cada 5 min) de ativos em Investing/TradingView via Playwright + BeautifulSoup
-- **Pagamentos** — Planos Basic, Premium e Premium Plus com Mercado Pago (assinatura e pagamento único)
-- **Integração Discord** — OAuth2 e sincronização de roles por plano (sync diário via Celery Beat)
-- **Rate limiting** — Proteção em login (5/min) e registro (3/min) por IP
-- **Pipeline de importação** — Comandos de management para popular trades em lote
-- **Dashboard analítico** — Queries otimizadas com índices e agregações
+- **Structured trade journal** — Registration with market, timeframe, SMC setup, trigger, P&D, screenshots, and validations
+- **AI analysis** — Summaries and insights on the journal via OpenAI GPT-4o mini
+- **Macro dashboard** — Automatic collection (every 5 min) of assets from Investing/TradingView via Playwright + BeautifulSoup
+- **Payments** — Basic, Premium, and Premium Plus plans with Mercado Pago (subscription and one-off payment)
+- **Discord integration** — OAuth2 and role sync by plan (daily sync via Celery Beat)
+- **Rate limiting** — Protection on login (5/min) and registration (3/min) per IP
+- **Import pipeline** — Management commands to bulk-load trades
+- **Analytics dashboard** — Optimized queries with indexes and aggregations
 
 ---
 
@@ -36,37 +36,37 @@ Client (Browser)
     ↓
 API Layer (Django Views / Forms)
     ↓
-Service Layer (Regras de negócio — services/, llm_service, validators)
+Service Layer (Business rules — services/, llm_service, validators)
     ↓
 Data Layer (PostgreSQL — models, ORM)
     ↓
 Background Workers (Celery + Redis)
 ```
 
-**Separação de responsabilidades:**
-- **Views** — Recebem requests, delegam para services, retornam respostas
-- **Services** — Lógica de negócio (Mercado Pago, Discord, coleta macro, análise IA)
-- **Models** — Persistência e relacionamentos
-- **Tasks** — Tarefas assíncronas e agendadas
+**Separation of concerns:**
+- **Views** — Receive requests, delegate to services, return responses
+- **Services** — Business logic (Mercado Pago, Discord, macro collection, AI analysis)
+- **Models** — Persistence and relationships
+- **Tasks** — Asynchronous and scheduled jobs
 
-**Desacoplamento:** Integrações externas isoladas em módulos `services/` (mercadopago, network, collector, parsers).
+**Decoupling:** External integrations are isolated in `services/` modules (mercadopago, network, collector, parsers).
 
-**Filas:** Celery Beat agenda coleta macro (a cada 5 min) e sync Discord (diário às 4h). Redis como broker e result backend.
+**Queues:** Celery Beat schedules macro collection (every 5 min) and Discord sync (daily at 4:00). Redis as broker and result backend.
 
-**Organização modular:** Apps Django independentes — `accounts`, `trades`, `macro`, `payments`, `discord_integration`.
+**Modular layout:** Independent Django apps — `accounts`, `trades`, `macro`, `payments`, `discord_integration`.
 
 ---
 
 ## 4️⃣ Tech Stack
 
-| Camada | Tecnologia |
+| Layer | Technology |
 |--------|------------|
 | **Backend** | Python 3.13, Django 5.2 |
 | **Database** | PostgreSQL 16 |
 | **Async & Background** | Celery 5.3, Redis 7 |
-| **Scraping / Automação** | Playwright, BeautifulSoup4, Requests, Pandas |
-| **IA** | OpenAI API (gpt-4o-mini) |
-| **Pagamentos** | Mercado Pago (SDK/API) |
+| **Scraping / Automation** | Playwright, BeautifulSoup4, Requests, Pandas |
+| **AI** | OpenAI API (gpt-4o-mini) |
+| **Payments** | Mercado Pago (SDK/API) |
 | **Infrastructure** | Docker, Gunicorn, Whitenoise |
 | **CI/CD** | GitHub Actions, Ruff (lint), Pytest/coverage |
 | **Deploy** | AWS Lightsail (Docker Compose) |
@@ -75,97 +75,97 @@ Background Workers (Celery + Redis)
 
 ## 5️⃣ API Design
 
-A aplicação é **server-rendered** (Django templates + forms). Endpoints principais:
+The application is **server-rendered** (Django templates + forms). Main endpoints:
 
-- **Rotas web** — `/accounts/`, `/trades/`, `/macro/`, `/pagamentos/`, `/discord/`
-- **Webhooks** — `/pagamentos/webhook/` (Mercado Pago) — `csrf_exempt` com validação de assinatura HMAC
-- **Padrão de resposta** — HTML para páginas; redirects com mensagens flash para ações
-- **Validações** — Django Forms com validators customizados (ex.: tamanho de imagem, extensões)
-- **Serializers** — Não há DRF; dados estruturados via forms e `model_to_dict` onde necessário
+- **Web routes** — `/accounts/`, `/trades/`, `/macro/`, `/pagamentos/`, `/discord/`
+- **Webhooks** — `/pagamentos/webhook/` (Mercado Pago) — `csrf_exempt` with HMAC signature validation
+- **Response pattern** — HTML for pages; redirects with flash messages for actions
+- **Validation** — Django Forms with custom validators (e.g., image size, extensions)
+- **Serializers** — No DRF; structured data via forms and `model_to_dict` where needed
 
 ---
 
 ## 6️⃣ Data Modeling
 
-**Modelagem relacional:**
+**Relational modeling:**
 
-- **User / Profile** — 1:1; Profile com plano, saldo, Discord, preferências
-- **Trade** — N:1 User; campos SMC (setup, trigger, P&D, HTF), resultado financeiro, screenshot
-- **Payment / Subscription** — N:1 User; índices em `mp_payment_id`, `external_reference`, `mp_preapproval_id`
-- **MacroAsset / MacroVariation / MacroScore** — Coleta de dados macro com `measurement_time` e `unique_together`
-- **AIAnalyticsRun / GlobalAIAnalyticsRun** — Registro de execuções de análise por IA
+- **User / Profile** — 1:1; Profile with plan, balance, Discord, preferences
+- **Trade** — N:1 User; SMC fields (setup, trigger, P&D, HTF), financial result, screenshot
+- **Payment / Subscription** — N:1 User; indexes on `mp_payment_id`, `external_reference`, `mp_preapproval_id`
+- **MacroAsset / MacroVariation / MacroScore** — Macro data collection with `measurement_time` and `unique_together`
+- **AIAnalyticsRun / GlobalAIAnalyticsRun** — Log of AI analysis runs
 
-**Índices:**
+**Indexes:**
 - `payments`: `mp_payment_id`, `external_reference`
 - `subscriptions`: `mp_preapproval_id`, `external_reference`
 - `macro`: `measurement_time`, `status`, `active`, `source_key`
-- `Trade`: `ordering` por `-executed_at`, `-id`
+- `Trade`: `ordering` by `-executed_at`, `-id`
 
-**Otimização:** Queries com `select_related`/`prefetch_related` onde há FK; agregações no dashboard com `annotate` e `values`.
+**Optimization:** Queries with `select_related`/`prefetch_related` where there are FKs; dashboard aggregations with `annotate` and `values`.
 
 ---
 
 ## 7️⃣ Asynchronous Processing
 
-**Por que Celery:** Coleta macro (Playwright) e sync Discord são operações lentas e externas; não podem bloquear o request.
+**Why Celery:** Macro collection (Playwright) and Discord sync are slow, external operations; they must not block the request.
 
-**Tarefas assíncronas:**
-- `collect_macro_cycle` — Coleta dados de Investing/TradingView; agenda a cada 5 min; retry com backoff (até 3x)
-- `sync_user_roles` — Sincroniza roles Discord de um usuário
-- `sync_all_discord_roles` — Sincroniza todos os perfis; agenda diário às 4h
+**Asynchronous tasks:**
+- `collect_macro_cycle` — Collects data from Investing/TradingView; runs every 5 min; retry with backoff (up to 3 times)
+- `sync_user_roles` — Syncs Discord roles for one user
+- `sync_all_discord_roles` — Syncs all profiles; scheduled daily at 4:00
 
-**Estratégia de retry:** `autoretry_for=(Exception,)`, `retry_backoff=True`, `retry_backoff_max=300`, `max_retries=3`.
+**Retry strategy:** `autoretry_for=(Exception,)`, `retry_backoff=True`, `retry_backoff_max=300`, `max_retries=3`.
 
-**Redis:** Broker e result backend; permite persistência e escalabilidade dos workers.
+**Redis:** Broker and result backend; enables persistence and worker scalability.
 
 ---
 
 ## 8️⃣ Security & Reliability
 
-- **Autenticação** — Django session-based; `LOGIN_REQUIRED` em views sensíveis
-- **Rate limiting** — `django-ratelimit` em login (5/min) e registro (3/min) por IP
-- **Proteção CSRF** — `CsrfViewMiddleware`; cookies `Secure` e `SameSite=Lax` em produção
-- **Isolamento de permissões** — `@login_required`; checagem `has_plan_at_least()` para features por plano
-- **Webhooks** — Validação de assinatura HMAC no Mercado Pago
-- **Tratamento de erros** — Logging estruturado; `RequestTimingMiddleware` para requests >500ms
-- **Produção** — HSTS, SSL redirect, cookies seguros, `ATOMIC_REQUESTS`
+- **Authentication** — Django session-based; `LOGIN_REQUIRED` on sensitive views
+- **Rate limiting** — `django-ratelimit` on login (5/min) and registration (3/min) per IP
+- **CSRF protection** — `CsrfViewMiddleware`; `Secure` and `SameSite=Lax` cookies in production
+- **Permission isolation** — `@login_required`; `has_plan_at_least()` checks for plan-gated features
+- **Webhooks** — HMAC signature validation for Mercado Pago
+- **Error handling** — Structured logging; `RequestTimingMiddleware` for requests >500ms
+- **Production** — HSTS, SSL redirect, secure cookies, `ATOMIC_REQUESTS`
 
 ---
 
 ## 9️⃣ Testing & Code Quality
 
-- **Testes automatizados** — `manage.py test` com settings `trader_portal.settings.ci` (SQLite em memória)
-- **Cobertura mínima** — 70% (`.coveragerc`); `coverage report --fail-under=70`
-- **Linting** — Ruff (`ruff check .`, `ruff format .`); config em `pyproject.toml`
-- **CI** — GitHub Actions: lint + testes + cobertura a cada push/PR
-- **Fluxo de PR** — CI deve passar antes do merge; `makemigrations --check` garante migrações em dia
+- **Automated tests** — `manage.py test` with `trader_portal.settings.ci` (in-memory SQLite)
+- **Minimum coverage** — 70% (`.coveragerc`); `coverage report --fail-under=70`
+- **Linting** — Ruff (`ruff check .`, `ruff format .`); config in `pyproject.toml`
+- **CI** — GitHub Actions: lint + tests + coverage on every push/PR
+- **PR workflow** — CI must pass before merge; `makemigrations --check` keeps migrations up to date
 
 ---
 
 ## 🔟 Running Locally
 
 ```bash
-# Clone o repositório
-git clone <url-do-repositorio>
+# Clone the repository
+git clone <repository-url>
 cd smc_lab
 
-# Crie o arquivo .env
+# Create the .env file
 cp .env.example .env
-# Edite .env com DATABASE_URL, SECRET_KEY, Redis, etc.
+# Edit .env with DATABASE_URL, SECRET_KEY, Redis, etc.
 
-# Com Docker (recomendado)
+# With Docker (recommended)
 docker compose up -d
 
-# Aplicar migrações (primeira vez)
+# Apply migrations (first run)
 docker compose exec web python manage.py migrate
 
-# Criar superusuário (opcional)
+# Create superuser (optional)
 docker compose exec web python manage.py createsuperuser
 ```
 
-**Aplicação:** http://localhost:8000
+**App:** http://localhost:8000
 
-### Sem Docker
+### Without Docker
 
 ```bash
 python -m venv .venv
@@ -173,24 +173,24 @@ python -m venv .venv
 # source .venv/bin/activate   # Linux/macOS
 
 pip install -r requirements.txt
-# Redis e PostgreSQL rodando localmente
+# Redis and PostgreSQL running locally
 
 python manage.py migrate
 python manage.py collectstatic --noinput
 python manage.py runserver
 
-# Em outro terminal: worker e beat
+# In another terminal: worker and beat
 celery -A trader_portal worker -l info
 celery -A trader_portal beat -l info
 ```
 
-### Variáveis de ambiente
+### Environment variables
 
-Consulte `.env.example` para dev local; `docs/env_production_template.txt` para produção. Principais:
+See `.env.example` for local dev; `docs/env_production_template.txt` for production. Main ones:
 
 - `DJANGO_SECRET_KEY`, `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS`, `DATABASE_URL`
 - `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`
-- `MERCADOPAGO_ACCESS_TOKEN`, `MERCADOPAGO_PUBLIC_KEY`, URLs de webhook
+- `MERCADOPAGO_ACCESS_TOKEN`, `MERCADOPAGO_PUBLIC_KEY`, webhook URLs
 - `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`
 - `OPENAI_API_KEY`, `OPENAI_ANALYTICS_MODEL`
 
@@ -198,37 +198,37 @@ Consulte `.env.example` para dev local; `docs/env_production_template.txt` para 
 
 ## 1️⃣1️⃣ Deployment
 
-- **Ambiente** — AWS Lightsail; instância com Docker
-- **Docker** — `docker compose` com serviços: web (Gunicorn), worker, beat, Redis, PostgreSQL
-- **Processo** — `scripts/deploy.sh`: `git pull` → `docker compose up -d --build` → `migrate` → `collectstatic`
-- **CI/CD** — Deploy via GitHub Actions (SSH) após push na `main`; secrets: `SSH_HOST`, `SSH_USER`, `SSH_PRIVATE_KEY`
-- **Variáveis** — `.env` no servidor; nunca commitado
-- **Worker Watchdog** — Script cron que reinicia Celery worker se parar; `scripts/install_worker_watchdog.sh`
-- **Reinício do worker** — 3x/dia (06:04, 13:04, 22:04) para limpar processos órfãos; `logs/worker_restart_daily.log`
+- **Environment** — AWS Lightsail; Docker-enabled instance
+- **Docker** — `docker compose` with services: web (Gunicorn), worker, beat, Redis, PostgreSQL
+- **Process** — `scripts/deploy.sh`: `git pull` → `docker compose up -d --build` → `migrate` → `collectstatic`
+- **CI/CD** — Deploy via GitHub Actions (SSH) after push to `main`; secrets: `SSH_HOST`, `SSH_USER`, `SSH_PRIVATE_KEY`
+- **Variables** — `.env` on the server; never committed
+- **Worker Watchdog** — Cron script that restarts the Celery worker if it stops; `scripts/install_worker_watchdog.sh`
+- **Worker restart** — 3×/day (06:04, 13:04, 22:04) to clear orphan processes; `logs/worker_restart_daily.log`
 
 ---
 
 ## 1️⃣2️⃣ Future Improvements
 
-- **Observabilidade** — APM (Sentry, DataDog) e tracing distribuído
-- **Métricas** — Prometheus + Grafana para latência, filas Celery, uso de recursos
-- **Cache layer** — Redis para painel macro e dashboards (cache de queries pesadas)
-- **Escalabilidade horizontal** — Múltiplos workers Celery; Redis como cache Django em produção
-- **APIs REST** — DRF ou FastAPI para integrações e mobile
-- **Testes de carga** — Locust já presente; expandir cenários e thresholds
+- **Observability** — APM (Sentry, DataDog) and distributed tracing
+- **Metrics** — Prometheus + Grafana for latency, Celery queues, resource usage
+- **Cache layer** — Redis for macro panel and dashboards (heavy query caching)
+- **Horizontal scaling** — Multiple Celery workers; Redis as Django cache in production
+- **REST APIs** — DRF or FastAPI for integrations and mobile
+- **Load testing** — Locust already present; expand scenarios and thresholds
 
 ---
 
-## Documentação adicional
+## Additional documentation
 
-- **Deploy:** `scripts/deploy.sh` — script de deploy automatizado
-- **CI/CD:** `docs/CI_CD_EXPLICACAO.md` — explicação do pipeline
-- **CD passo a passo:** `docs/CD_CONFIGURACAO_PASSO_A_PASSO.md`
-- **Env produção:** `docs/env_production_template.txt`
+- **Deploy:** `scripts/deploy.sh` — automated deploy script
+- **CI/CD:** `docs/CI_CD_EXPLICACAO.md` — pipeline explanation
+- **CD step by step:** `docs/CD_CONFIGURACAO_PASSO_A_PASSO.md`
+- **Production env:** `docs/env_production_template.txt`
 
 ---
 
-## Licença
+## License
 
-Projeto em execução. www.smclab.com.br
+Live project. www.smclab.com.br
 
