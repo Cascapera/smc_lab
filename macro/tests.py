@@ -202,6 +202,7 @@ class ExecuteCycleTest(TestCase):
             active=True,
         )
 
+    @patch("macro.services.collector.is_market_closed", return_value=False)
     @patch("macro.services.collector.fetch_html")
     def test_execute_cycle_persiste_variacao_e_score(self, mock_fetch):
         from macro.services.network import FetchOutcome
@@ -211,6 +212,7 @@ class ExecuteCycleTest(TestCase):
             html='<span data-test="instrument-price-change-percent">+50%</span>',
             status="ok",
         )
+        # is_market_closed fixado em False: evita flakiness de TZ do runner (CI vs local)
         measurement_time = timezone.make_aware(datetime(2025, 2, 24, 10, 5, 0))
 
         execute_cycle(measurement_time)
