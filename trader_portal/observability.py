@@ -57,10 +57,11 @@ def resolve_correlation_id(task_id: Optional[str]) -> str:
 class Timer:
     """Wall-clock elapsed time in milliseconds (set on context exit)."""
 
-    __slots__ = ("duration_ms",)
+    __slots__ = ("_t0", "duration_ms")
 
     def __init__(self) -> None:
         self.duration_ms = 0
+        self._t0 = 0.0
 
     def __enter__(self) -> Timer:
         self._t0 = time.perf_counter()
@@ -95,4 +96,8 @@ def log_event(
             {"event": event, "error": "log_event_serialize_failed"},
             default=str,
         )
-    logger.log(level, line)
+    try:
+        logger.log(level, line)
+    except Exception:
+        # Não interromper o chamador por falha de handler/logging.
+        pass

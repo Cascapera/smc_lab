@@ -206,7 +206,6 @@ class ExecuteCycleTest(TestCase):
         from macro.services.network import FetchOutcome
 
         measurement_time = timezone.make_aware(datetime(2025, 2, 24, 10, 5, 0))
-        # Context managers evitam ambiguidade na ordem dos @patch (dois mocks = dois args).
         with (
             patch("macro.services.collector.fetch_html") as mock_fetch,
             patch("macro.services.collector.is_market_closed", return_value=False),
@@ -218,6 +217,7 @@ class ExecuteCycleTest(TestCase):
             )
             execute_cycle(measurement_time)
 
+        self.assertTrue(mock_fetch.called, "fetch_html deveria ter sido chamado")
         self.assertEqual(MacroVariation.objects.count(), 1)
         self.assertEqual(MacroScore.objects.count(), 1)
         score = MacroScore.objects.get()
