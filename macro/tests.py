@@ -202,20 +202,21 @@ class ExecuteCycleTest(TestCase):
             active=True,
         )
 
-    @patch("macro.services.collector.is_market_closed", return_value=False)
-    @patch("macro.services.collector.fetch_html")
-    def test_execute_cycle_persiste_variacao_e_score(self, mock_fetch):
+    def test_execute_cycle_persiste_variacao_e_score(self):
         from macro.services.network import FetchOutcome
 
-        # +50% -> variation_decimal=0.5; com value_base=0.5, score=1 (0.5 >= 0.5)
-        mock_fetch.return_value = FetchOutcome(
-            html='<span data-test="instrument-price-change-percent">+50%</span>',
-            status="ok",
-        )
-        # is_market_closed fixado em False: evita flakiness de TZ do runner (CI vs local)
         measurement_time = timezone.make_aware(datetime(2025, 2, 24, 10, 5, 0))
-
-        execute_cycle(measurement_time)
+        # Context managers evitam ambiguidade na ordem dos @patch (dois mocks = dois args).
+        with (
+            patch("macro.services.collector.fetch_html") as mock_fetch,
+            patch("macro.services.collector.is_market_closed", return_value=False),
+            patch("macro.services.collector.time.sleep"),
+        ):
+            mock_fetch.return_value = FetchOutcome(
+                html='<span data-test="instrument-price-change-percent">+50%</span>',
+                status="ok",
+            )
+            execute_cycle(measurement_time)
 
         self.assertEqual(MacroVariation.objects.count(), 1)
         self.assertEqual(MacroScore.objects.count(), 1)

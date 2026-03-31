@@ -88,5 +88,11 @@ def log_event(
     for key, value in fields.items():
         if value is not None:
             payload[key] = value
-    line = json.dumps(payload, default=str)
+    try:
+        line = json.dumps(payload, default=str)
+    except (TypeError, ValueError):
+        line = json.dumps(
+            {"event": event, "error": "log_event_serialize_failed"},
+            default=str,
+        )
     logger.log(level, line)
