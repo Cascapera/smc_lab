@@ -44,3 +44,8 @@ MIDDLEWARE = [
 DEBUG_TOOLBAR_CONFIG = {
     "SHOW_TOOLBAR_CALLBACK": lambda request: DEBUG,
 }
+
+# Mesmos loggers JSON do macro que em produção (merge sobre o DEFAULT_LOGGING do Django)
+from django.utils.log import DEFAULT_LOGGING  # noqa: E402
+
+LOGGING = merge_macro_into_logging(DEFAULT_LOGGING)  # noqa: F405

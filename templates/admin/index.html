@@ -1,55 +1,58 @@
 {% extends "admin/base_site.html" %}
-{% load i18n static log %}
+{% load i18n %}
 
-{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static 'admin/css/dashboard.css' %}">{% endblock %}
-{% block coltype %}colMS{% endblock %}
-{% block bodyclass %}{{ block.super }} dashboard{% endblock %}
-{% block nav-breadcrumbs %}{% endblock %}
-{% block nav-sidebar %}{% endblock %}
+{% block title %}{% translate 'Administration' %}{% endblock %}
 
 {% block content %}
-<div id="content-main" class="app-list">
+<div id="content-main">
   <div class="module" style="margin-bottom: 1.5rem;">
-    <h2>Relatórios</h2>
-    <ul>
-      <li>
-        <a href="{% url 'admin:trades_operations_rank' %}">Rank de operações por usuário</a>
-        — Quantidade de operações registradas por usuário, ordenado do maior para o menor.
-      </li>
-    </ul>
+    <table style="width: auto;">
+      <caption><h2 style="margin: 0 0 0.5rem 0;">Assinantes ativos</h2></caption>
+      <tbody>
+        <tr>
+          <th scope="row" style="text-align: left; padding-right: 1rem;">Total com plano pago vigente</th>
+          <td><strong>{{ active_subscribers_count|default:"0" }}</strong></td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="help" style="margin-top: 0.5rem;">
+      Contagem baseada em perfis com plano diferente de Free e sem expiração ou com data de expiração futura.
+    </p>
   </div>
-  {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
-</div>
-{% endblock %}
 
-{% block sidebar %}
-<div id="content-related">
-  <div class="module" id="recent-actions-module">
-    <h2>{% translate 'Recent actions' %}</h2>
-    <h3>{% translate 'My actions' %}</h3>
-    {% get_admin_log 10 as admin_log for_user user %}
-    {% if not admin_log %}
-    <p>{% translate 'None available' %}</p>
+  <div class="module" style="margin-bottom: 1.5rem;">
+    <h2 style="margin: 0 0 0.75rem 0;">Últimas vendas</h2>
+    <p class="help" style="margin-top: 0;">Pagamentos com status <strong>Aprovado</strong> (mais recentes primeiro).</p>
+    {% if recent_sales %}
+    <div style="overflow-x: auto;">
+      <table class="listing">
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Usuário</th>
+            <th>Plano</th>
+            <th>Valor</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in recent_sales %}
+          <tr>
+            <td>{{ p.created_at|date:"d/m/Y H:i" }}</td>
+            <td>{{ p.user.email|default:p.user.username }}</td>
+            <td>{{ p.get_plan_display }}</td>
+            <td>{{ p.amount }} {{ p.currency }}</td>
+            <td><a href="{% url 'admin:payments_payment_change' p.pk %}">Abrir</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
     {% else %}
-    <ul class="actionlist">
-      {% for entry in admin_log %}
-      <li class="{% if entry.is_addition %}addlink{% endif %}{% if entry.is_change %}changelink{% endif %}{% if entry.is_deletion %}deletelink{% endif %}">
-        <span class="visually-hidden">{% if entry.is_addition %}{% translate 'Added:' %}{% elif entry.is_change %}{% translate 'Changed:' %}{% elif entry.is_deletion %}{% translate 'Deleted:' %}{% endif %}</span>
-        {% if entry.is_deletion or not entry.get_admin_url %}
-        {{ entry.object_repr }}
-        {% else %}
-        <a href="{{ entry.get_admin_url }}">{{ entry.object_repr }}</a>
-        {% endif %}
-        <br>
-        {% if entry.content_type %}
-        <span class="mini quiet">{% filter capfirst %}{{ entry.content_type.name }}{% endfilter %}</span>
-        {% else %}
-        <span class="mini quiet">{% translate 'Unknown content' %}</span>
-        {% endif %}
-      </li>
-      {% endfor %}
-    </ul>
+    <p>Nenhum pagamento aprovado registrado ainda.</p>
     {% endif %}
   </div>
+
+  {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
 </div>
 {% endblock %}

@@ -17,11 +17,11 @@ Including another URLconf
 
 from django.conf import settings
 from django.conf.urls.static import static
-from django.contrib import admin
 from django.templatetags.static import static as static_url
 from django.urls import include, path
 from django.views.generic import RedirectView, TemplateView
 
+from trader_portal.admin_site import admin_site
 from trades.views import MuralView
 
 urlpatterns = [
@@ -29,7 +29,7 @@ urlpatterns = [
         "favicon.ico",
         RedirectView.as_view(url=static_url("image/fav.png"), permanent=True),
     ),
-    path("admin/", admin.site.urls),
+    path("admin/", admin_site.urls),
     path("accounts/", include("accounts.urls")),
     path("pagamentos/", include("payments.urls", namespace="payments")),
     path("discord/", include("discord_integration.urls", namespace="discord")),

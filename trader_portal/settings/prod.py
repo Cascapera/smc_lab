@@ -35,37 +35,39 @@ MIDDLEWARE = [
     "trader_portal.middleware.RequestTimingMiddleware",
 ] + MIDDLEWARE  # noqa: F405
 
-LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "verbose": {
-            "format": "%(asctime)s [%(levelname)s] %(name)s %(message)s",
+LOGGING = merge_macro_into_logging(
+    {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "verbose": {
+                "format": "%(asctime)s [%(levelname)s] %(name)s %(message)s",
+            },
         },
-    },
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-            "formatter": "verbose",
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "formatter": "verbose",
+            },
+            "macro_file": {
+                "class": "logging.handlers.RotatingFileHandler",
+                "formatter": "verbose",
+                "filename": str(LOG_DIR / "macro_errors.log"),
+                "maxBytes": 5 * 1024 * 1024,
+                "backupCount": 5,
+                "level": "ERROR",
+            },
         },
-        "macro_file": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": str(LOG_DIR / "macro_errors.log"),
-            "maxBytes": 5 * 1024 * 1024,
-            "backupCount": 5,
-            "level": "ERROR",
+        "root": {
+            "handlers": ["console"],
+            "level": env("DJANGO_LOG_LEVEL", default="INFO"),
         },
-    },
-    "root": {
-        "handlers": ["console"],
-        "level": env("DJANGO_LOG_LEVEL", default="INFO"),
-    },
-    "loggers": {
-        "macro": {
-            "handlers": ["console", "macro_file"],
-            "level": env("MACRO_LOG_LEVEL", default="INFO"),
-            "propagate": False,
-        }
-    },
-}
+        "loggers": {
+            "macro": {
+                "handlers": ["console", "macro_file"],
+                "level": env("MACRO_LOG_LEVEL", default="INFO"),
+                "propagate": False,
+            }
+        },
+    }
+)

@@ -17,6 +17,7 @@ from macro.services.utils import (
     is_market_closed,
     parse_variation_percent,
 )
+from trader_portal.observability import Timer, log_event
 
 
 def _iter_assets() -> Iterable[MacroAsset]:
@@ -62,14 +63,12 @@ def execute_cycle(measurement_time: Optional[datetime] = None) -> None:
             timezone.now(), config.TARGET_INTERVAL_MINUTES
         )
         if is_market_closed(measurement_time):
-            logger.info("[macro] Coleta pausada (janela de mercado fechada).")
             return
     except Exception as exc:
         logger.error("[macro] Erro ao inicializar ciclo: %s", exc, exc_info=True)
         raise
 
     label = measurement_time.strftime("%Y-%m-%d %H:%M")
-    logger.info("[macro] Iniciando ciclo para %s", label)
 
     assets = list(_iter_assets())
     last_variations = {}
@@ -123,7 +122,44 @@ def execute_cycle(measurement_time: Optional[datetime] = None) -> None:
                 scores.append(score)
                 continue
 
-            outcome = fetch_html(asset)
+            log_event(
+                logger,
+                event="macro_fetch_started",
+                message="External fetch",
+                asset=asset.name,
+                source=asset.source_key,
+                status="started",
+            )
+            fetch_timer = Timer()
+            try:
+                with fetch_timer:
+                    outcome = fetch_html(asset)
+            except Exception as fetch_exc:
+                log_event(
+                    logger,
+                    event="macro_fetch_failed",
+                    message="fetch_html raised",
+                    asset=asset.name,
+                    source=asset.source_key,
+                    status="error",
+                    step="fetch_html",
+                    elapsed_ms=fetch_timer.duration_ms,
+                    error=str(fetch_exc),
+                    exception_type=type(fetch_exc).__name__,
+                    level=logging.ERROR,
+                )
+                raise
+            log_event(
+                logger,
+                event="macro_fetch_completed",
+                message="Fetch returned",
+                asset=asset.name,
+                source=asset.source_key,
+                status="success" if outcome.status == "ok" else "error",
+                elapsed_ms=fetch_timer.duration_ms,
+                fetch_status=outcome.status,
+                error=outcome.block_reason,
+            )
             payload_bytes = len(outcome.html.encode("utf-8")) if outcome.html else 0
             total_bytes += payload_bytes
             parser = PARSER_BY_SOURCE.get(asset.source_key)
@@ -180,6 +216,18 @@ def execute_cycle(measurement_time: Optional[datetime] = None) -> None:
             delay_min, delay_max = config.FETCH_DELAY_RANGE
             time.sleep(random.uniform(delay_min, delay_max))
         except Exception as exc:
+            log_event(
+                logger,
+                event="macro_fetch_failed",
+                message="Asset processing failed",
+                asset=asset.name,
+                source=asset.source_key,
+                status="error",
+                step="asset_processing",
+                error=str(exc),
+                exception_type=type(exc).__name__,
+                level=logging.ERROR,
+            )
             logger.error(
                 "[macro] Erro ao coletar ativo %s (ID: %d): %s",
                 asset.name,
@@ -211,10 +259,3 @@ def execute_cycle(measurement_time: Optional[datetime] = None) -> None:
             exc_info=True,
         )
         raise
-
-    logger.info(
-        "[macro] Ciclo concluído (%s ativos) para %s (payload ~%.2f KB)",
-        len(variations),
-        label,
-        total_bytes / 1024,
-    )

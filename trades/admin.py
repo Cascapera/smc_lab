@@ -4,6 +4,8 @@ from django.shortcuts import render
 from django.urls import path
 from django.utils.html import format_html
 
+from trader_portal.admin_site import admin_site
+
 from .models import GlobalAIAnalyticsRun, Trade
 
 
@@ -24,7 +26,7 @@ def operations_rank_view(request):
     )
 
 
-@admin.register(Trade)
+@admin.register(Trade, site=admin_site)
 class TradeAdmin(admin.ModelAdmin):
     list_select_related = ("user",)
     list_display = (
@@ -78,7 +80,7 @@ class TradeAdmin(admin.ModelAdmin):
     screenshot_link.admin_order_field = "screenshot"
 
 
-@admin.register(GlobalAIAnalyticsRun)
+@admin.register(GlobalAIAnalyticsRun, site=admin_site)
 class GlobalAIAnalyticsRunAdmin(admin.ModelAdmin):
     list_display = ("requested_at", "requested_by", "result_preview")
     list_filter = ("requested_at",)

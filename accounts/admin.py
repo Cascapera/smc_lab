@@ -2,6 +2,8 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.translation import gettext_lazy as _
 
+from trader_portal.admin_site import admin_site
+
 from .forms import CustomUserChangeForm, CustomUserCreationForm
 from .models import Profile, User
 
@@ -13,7 +15,7 @@ class ProfileInline(admin.StackedInline):
     verbose_name_plural = "perfil"
 
 
-@admin.register(User)
+@admin.register(User, site=admin_site)
 class UserAdmin(BaseUserAdmin):
     add_form = CustomUserCreationForm
     form = CustomUserChangeForm
@@ -26,7 +28,7 @@ class UserAdmin(BaseUserAdmin):
     ordering = ("email",)
 
 
-@admin.register(Profile)
+@admin.register(Profile, site=admin_site)
 class ProfileAdmin(admin.ModelAdmin):
     list_select_related = ("user",)
     list_display = (

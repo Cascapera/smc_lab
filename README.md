@@ -137,6 +137,7 @@ The application is **server-rendered** (Django templates + forms). Main endpoint
 - **Automated tests** — `manage.py test` with `trader_portal.settings.ci` (in-memory SQLite)
 - **Minimum coverage** — 70% (`.coveragerc`); `coverage report --fail-under=70`
 - **Linting** — Ruff (`ruff check .`, `ruff format .`); config in `pyproject.toml`
+- **Pre-commit (optional)** — Fast local checks before commit: install dev deps with `pip install -r requirements-dev.txt`, then `pre-commit install`. Runs Ruff, Python `check-ast`, and `manage.py check` with `trader_portal.settings.ci` (in-memory SQLite, same as CI). Requires project dependencies installed; does not replace CI.
 - **CI** — GitHub Actions: lint + tests + coverage on every push/PR
 - **PR workflow** — CI must pass before merge; `makemigrations --check` keeps migrations up to date
 

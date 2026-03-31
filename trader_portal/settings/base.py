@@ -364,6 +364,50 @@ DISCORD_ROLE_PREMIUM_PLUS_ID = env("DISCORD_ROLE_PREMIUM_PLUS_ID", default="")
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 OPENAI_ANALYTICS_MODEL = env("OPENAI_ANALYTICS_MODEL", default="gpt-4o-mini")
 
+# --------------------------------------------------------------------------------------
+# Logging — fragmento para eventos JSON (macro observability)
+# --------------------------------------------------------------------------------------
+# log_event() já serializa a mensagem; o formatter só repassa %(message)s.
+# Usar merge_macro_into_logging() em prod/dev/ci para não substituir o restante da config.
+
+MACRO_STRUCTURED_LOGGING = {
+    "formatters": {
+        "message_only": {
+            "format": "%(message)s",
+        },
+    },
+    "handlers": {
+        "macro_structured_console": {
+            "class": "logging.StreamHandler",
+            "formatter": "message_only",
+        },
+    },
+    "loggers": {
+        "macro.tasks": {
+            "handlers": ["macro_structured_console"],
+            "level": env("MACRO_LOG_LEVEL", default="INFO"),
+            "propagate": False,
+        },
+        "macro.services.collector": {
+            "handlers": ["macro_structured_console"],
+            "level": env("MACRO_LOG_LEVEL", default="INFO"),
+            "propagate": False,
+        },
+    },
+}
+
+
+def merge_macro_into_logging(cfg):
+    """Junta MACRO_STRUCTURED_LOGGING a um dict LOGGING existente (deep copy)."""
+    from copy import deepcopy
+
+    out = deepcopy(cfg)
+    out.setdefault("formatters", {}).update(MACRO_STRUCTURED_LOGGING["formatters"])
+    out.setdefault("handlers", {}).update(MACRO_STRUCTURED_LOGGING["handlers"])
+    out.setdefault("loggers", {}).update(MACRO_STRUCTURED_LOGGING["loggers"])
+    return out
+
+
 # Livros recomendados na análise (links de compra)
 BOOK_SMART_MONEY_CONCEPT_URL = env("BOOK_SMART_MONEY_CONCEPT_URL", default="")
 BOOK_BLACK_BOOK_URL = env("BOOK_BLACK_BOOK_URL", default="")

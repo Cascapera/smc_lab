@@ -1,0 +1,27 @@
+# Fast local checks before commit. CI still runs the full pipeline (tests, coverage).
+# Install: pip install -r requirements-dev.txt && pre-commit install
+#
+default_language_version:
+  python: python3.13
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.0
+    hooks:
+      - id: ruff
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-ast
+        types: [python]
+
+  - repo: local
+    hooks:
+      - id: django-check
+        name: django check (ci settings)
+        entry: python scripts/precommit_django_check.py
+        language: system
+        pass_filenames: false
+        always_run: true

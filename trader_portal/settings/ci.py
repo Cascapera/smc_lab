@@ -37,3 +37,7 @@ CACHES = {
 PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.MD5PasswordHasher",
 ]
+
+from django.utils.log import DEFAULT_LOGGING  # noqa: E402
+
+LOGGING = merge_macro_into_logging(DEFAULT_LOGGING)  # noqa: F405
