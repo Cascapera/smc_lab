@@ -85,6 +85,7 @@ class Trigger(models.TextChoices):
     ROCADINHA = "rocadinha", "Roçadinha"
     BARRA_IGNORADA = "barra_ignorada", "Barra ignorada"
     GIFT = "gift", "Gift"
+    BOTA = "bota", "BOTA"
 
 
 class PartialTrade(models.TextChoices):
