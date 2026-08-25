@@ -42,6 +42,45 @@ jobs:
       - name: Rodar Ruff (format --check)
         run: ruff format --check .
 
+
+  compat-producao:
+    name: Compatibilidade com o Python de producao
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      # A imagem de producao (playwright v1.49.0-jammy, Ubuntu 22.04) roda
+      # Python 3.10, enquanto o resto do CI roda 3.13. Codigo com sintaxe ou
+      # simbolos de 3.11+ passava por toda a suite e so quebrava no servidor -
+      # foi o que derrubou o worker em loop de restart com `from datetime import
+      # UTC`, enquanto o site seguia no ar, escondendo a falha.
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.10 (mesma versão do container)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
+
+      - name: Instalar dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Importar os módulos que o Celery carrega
+        env:
+          DJANGO_SETTINGS_MODULE: trader_portal.settings.ci
+        run: |
+          python -c "
+          import django; django.setup()
+          import macro.tasks, macro.services.network, macro.services.collector, macro.services.retention
+          import trades.tasks, trades.services.analytics_ia
+          import accounts.tasks, discord_integration.tasks
+          import payments.services.plans, payments.services.mercadopago
+          import sys; print('ok em', sys.version.split()[0])
+          "
+
   test:
     name: Testes
     runs-on: ubuntu-latest

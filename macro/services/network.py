@@ -3,7 +3,8 @@ import logging
 import random
 import time
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
+from datetime import timezone as datetime_timezone
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
@@ -306,7 +307,7 @@ def _get_cached_investing_xhr_endpoint(asset: MacroAsset) -> Optional[str]:
     except ValueError:
         return None
     ttl = timedelta(hours=config.INVESTING_XHR_CACHE_TTL_HOURS)
-    if datetime.now(UTC).replace(tzinfo=None) - updated_at > ttl:
+    if datetime.now(datetime_timezone.utc).replace(tzinfo=None) - updated_at > ttl:
         return None
     return entry.get("xhr_url")
 
@@ -315,7 +316,7 @@ def _set_cached_investing_xhr_endpoint(asset: MacroAsset, xhr_url: str) -> None:
     cache = _load_investing_xhr_cache()
     cache[asset.url] = {
         "xhr_url": xhr_url,
-        "updated_at": datetime.now(UTC).replace(tzinfo=None).isoformat(),
+        "updated_at": datetime.now(datetime_timezone.utc).replace(tzinfo=None).isoformat(),
     }
     _save_investing_xhr_cache(cache)
 
@@ -337,7 +338,7 @@ def _get_cached_tradingview_xhr_endpoint(asset: MacroAsset) -> Optional[str]:
     except ValueError:
         return None
     ttl = timedelta(hours=config.TRADINGVIEW_XHR_CACHE_TTL_HOURS)
-    if datetime.now(UTC).replace(tzinfo=None) - updated_at > ttl:
+    if datetime.now(datetime_timezone.utc).replace(tzinfo=None) - updated_at > ttl:
         return None
     return entry.get("xhr_url")
 
@@ -346,7 +347,7 @@ def _set_cached_tradingview_xhr_endpoint(asset: MacroAsset, xhr_url: str) -> Non
     cache = _load_tradingview_xhr_cache()
     cache[asset.url] = {
         "xhr_url": xhr_url,
-        "updated_at": datetime.now(UTC).replace(tzinfo=None).isoformat(),
+        "updated_at": datetime.now(datetime_timezone.utc).replace(tzinfo=None).isoformat(),
     }
     _save_tradingview_xhr_cache(cache)
 
