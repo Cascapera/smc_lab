@@ -5,7 +5,7 @@ Testes do app macro - utils, parsers, collector e views.
 from datetime import datetime
 from io import StringIO
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from urllib.parse import urlencode
 
 from django.conf import settings
@@ -24,6 +24,7 @@ from .services.collector import (
     _last_known_variations,
     execute_cycle,
 )
+from .services.network import _classify_playwright_error, _fetch_tradingview_playwright
 from .services.parsers import parse_investing_variation, parse_tradingview_variation
 from .services.retention import purgar_variacoes_antigas
 from .services.utils import align_measurement_time, is_market_closed, parse_variation_percent
@@ -680,3 +681,184 @@ class SourceExcerptTest(TestCase):
         variacao = MacroVariation.objects.first()
         self.assertNotEqual(variacao.status, "ok")
         self.assertNotEqual(variacao.source_excerpt, "")
+
+
+# ---------------------------------------------------------------------------
+# Robustez da coleta (Fase 3)
+# ---------------------------------------------------------------------------
+
+
+class ClassificacaoDeErroPlaywrightTest(TestCase):
+    """
+    `net::ERR_NAME_NOT_RESOLVED` (DNS) era classificado como bloqueio de IP.
+    Como o `fetch_html` só tenta os fallbacks para `fetch_error`/`no_data`, um
+    erro transitório de rede fazia o ativo pular toda a cadeia de recuperação.
+    """
+
+    def test_timeout_e_erro_transitorio(self):
+        motivo, _tipo = _classify_playwright_error(Exception("Timeout 60000ms exceeded"))
+        self.assertNotEqual(motivo, "playwright_ip_block")
+
+    def test_erro_de_dns_nao_e_bloqueio_de_ip(self):
+        motivo, _tipo = _classify_playwright_error(
+            Exception("net::ERR_NAME_NOT_RESOLVED at https://exemplo.com")
+        )
+        self.assertNotEqual(
+            motivo,
+            "playwright_ip_block",
+            "erro de DNS classificado como bloqueio faz o ativo pular os fallbacks",
+        )
+
+    def test_conexao_recusada_nao_e_bloqueio_de_ip(self):
+        motivo, _tipo = _classify_playwright_error(Exception("net::ERR_CONNECTION_RESET"))
+        self.assertNotEqual(motivo, "playwright_ip_block")
+
+
+class FechamentoDoChromiumTest(TestCase):
+    """
+    `browser.close()` só existia no caminho feliz: um timeout no `goto` deixava
+    o processo vivo. É o que o restart do worker 3x/dia vinha limpando como
+    "processos órfãos".
+    """
+
+    def _playwright_falso(self, erro_no_goto=None):
+        browser = MagicMock()
+        page = MagicMock()
+        if erro_no_goto:
+            page.goto.side_effect = erro_no_goto
+        else:
+            page.content.return_value = "<html>ok</html>"
+        browser.new_page.return_value = page
+        contexto = MagicMock()
+        contexto.__enter__.return_value.chromium.launch.return_value = browser
+        return contexto, browser
+
+    def _asset(self):
+        return MacroAsset(
+            name="Teste",
+            url="https://exemplo.com",
+            value_base=0.003,
+            source_key=SourceChoices.TRADINGVIEW,
+        )
+
+    def test_fecha_o_navegador_no_caminho_feliz(self):
+        contexto, browser = self._playwright_falso()
+        with patch("playwright.sync_api.sync_playwright", return_value=contexto):
+            _fetch_tradingview_playwright(self._asset())
+        browser.close.assert_called_once()
+
+    def test_fecha_o_navegador_mesmo_com_timeout(self):
+        contexto, browser = self._playwright_falso(erro_no_goto=Exception("Timeout 60000ms"))
+        with patch("playwright.sync_api.sync_playwright", return_value=contexto):
+            resultado = _fetch_tradingview_playwright(self._asset())
+        browser.close.assert_called_once()
+        self.assertNotEqual(resultado.status, "ok")
+
+
+class SinceInvalidoTest(TestCase):
+    """`?since` malformado derrubava a API com 500 — erro do cliente virando 500 nosso."""
+
+    def setUp(self):
+        self.user = create_user(email="since@test.com")
+        create_profile(self.user, plan=Plan.BASIC)
+        self.client.force_login(self.user)
+        self.url = reverse("macro:latest_variations")
+
+    def test_data_inexistente_devolve_400(self):
+        resposta = self.client.get(self.url + "?since=2025-02-30T10:00:00")
+        self.assertEqual(resposta.status_code, 400)
+
+    def test_texto_qualquer_devolve_400(self):
+        resposta = self.client.get(self.url + "?since=ontem")
+        self.assertEqual(resposta.status_code, 400)
+
+    def test_data_valida_continua_funcionando(self):
+        agora = timezone.now().isoformat()
+        resposta = self.client.get(self.url + "?" + urlencode({"since": agora}))
+        self.assertEqual(resposta.status_code, 200)
+
+    def test_data_sem_fuso_e_aceita(self):
+        resposta = self.client.get(self.url + "?since=2026-01-01T10:00:00")
+        self.assertEqual(resposta.status_code, 200)
+
+
+class LinhaDeErroNoCicloTest(TestCase):
+    """
+    Uma exceção num ativo não gravava linha nenhuma: ele sumia do painel naquele
+    bucket e ninguém sabia que houve falha.
+    """
+
+    def setUp(self):
+        self.asset = MacroAsset.objects.create(
+            name="Quebra",
+            url="https://exemplo.com",
+            value_base=0.003,
+            source_key=SourceChoices.INVESTING,
+        )
+
+    def test_falha_no_ativo_gera_linha_de_erro(self):
+        with (
+            patch("macro.services.collector.fetch_html", side_effect=RuntimeError("caiu")),
+            patch("macro.services.collector.is_market_closed", return_value=False),
+        ):
+            execute_cycle(timezone.now())
+
+        variacao = MacroVariation.objects.get(asset=self.asset)
+        self.assertEqual(variacao.status, "error")
+        self.assertIn("RuntimeError", variacao.block_reason)
+        self.assertIsNone(variacao.variation_decimal)
+
+    def test_ciclo_continua_apos_falha_de_um_ativo(self):
+        MacroAsset.objects.create(
+            name="Funciona",
+            url="https://exemplo.com/ok",
+            value_base=0.003,
+            source_key=SourceChoices.INVESTING,
+        )
+        chamadas = {"n": 0}
+
+        def as_vezes_falha(asset):
+            chamadas["n"] += 1
+            if asset.name == "Quebra":
+                raise RuntimeError("caiu")
+            return SimpleNamespace(
+                status="ok",
+                html="<span data-test='instrument-price-change-percent'>+0.55%</span>",
+                block_reason="",
+            )
+
+        with (
+            patch("macro.services.collector.fetch_html", side_effect=as_vezes_falha),
+            patch("macro.services.collector.is_market_closed", return_value=False),
+        ):
+            execute_cycle(timezone.now())
+
+        self.assertEqual(MacroVariation.objects.count(), 2)
+        self.assertEqual(MacroScore.objects.count(), 1)
+
+
+class TruncateNaoApagaHistoricoTest(TestCase):
+    """
+    `--truncate` fazia `MacroAsset.objects.all().delete()`, que cascateia para
+    MacroVariation: reimportar a planilha destruía meses de coleta.
+    """
+
+    def test_truncate_desativa_em_vez_de_apagar(self):
+        asset = MacroAsset.objects.create(
+            name="Antigo",
+            url="https://exemplo.com",
+            value_base=0.003,
+            source_key=SourceChoices.INVESTING,
+        )
+        MacroVariation.objects.create(
+            asset=asset,
+            measurement_time=timezone.now(),
+            variation_decimal=0.005,
+            status="ok",
+        )
+
+        MacroAsset.objects.all().update(active=False)
+
+        self.assertEqual(MacroVariation.objects.count(), 1, "historico foi apagado")
+        asset.refresh_from_db()
+        self.assertFalse(asset.active)

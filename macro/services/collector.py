@@ -50,8 +50,9 @@ def _last_known_variations(assets: List[MacroAsset]) -> dict:
             ultima_decimal=Subquery(ultima.values("variation_decimal")[:1]),
             ultima_texto=Subquery(ultima.values("variation_text")[:1]),
             ultima_fase=Subquery(ultima.values("market_phase")[:1]),
+            ultima_medicao=Subquery(ultima.values("measurement_time")[:1]),
         )
-        .values("pk", "ultima_decimal", "ultima_texto", "ultima_fase")
+        .values("pk", "ultima_decimal", "ultima_texto", "ultima_fase", "ultima_medicao")
     )
 
     return {
@@ -60,6 +61,7 @@ def _last_known_variations(assets: List[MacroAsset]) -> dict:
             "variation_decimal": linha["ultima_decimal"],
             "variation_text": linha["ultima_texto"],
             "market_phase": linha["ultima_fase"],
+            "medido_em": linha["ultima_medicao"],
         }
         for linha in linhas
         if linha["ultima_decimal"] is not None
@@ -218,7 +220,14 @@ def execute_cycle(measurement_time: Optional[datetime] = None) -> None:
                         market_phase = fallback["market_phase"] or ""
                     status = "fallback"
                     if not outcome.block_reason:
-                        outcome.block_reason = "last_known"
+                        # Guarda a origem do numero: sem isso, o painel mostrava
+                        # dado de dias atras com a mesma cara de dado fresco.
+                        medido_em = fallback.get("medido_em")
+                        if medido_em:
+                            idade_min = int((measurement_time - medido_em).total_seconds() // 60)
+                            outcome.block_reason = f"last_known:{idade_min}min"
+                        else:
+                            outcome.block_reason = "last_known"
 
             # O excerpt serve para diagnosticar falha: mostra o trecho da página
             # de onde não se conseguiu extrair a variação. Guardá-lo também no
@@ -249,6 +258,23 @@ def execute_cycle(measurement_time: Optional[datetime] = None) -> None:
             delay_min, delay_max = config.FETCH_DELAY_RANGE
             time.sleep(random.uniform(delay_min, delay_max))
         except Exception as exc:
+            # Sem gravar nada, o ativo simplesmente sumia do painel naquele
+            # bucket e ninguem sabia que houve falha. Uma linha com status
+            # "error" mantem o historico honesto.
+            variations.append(
+                MacroVariation(
+                    asset=asset,
+                    measurement_time=measurement_time,
+                    variation_text=None,
+                    variation_decimal=None,
+                    status="error",
+                    block_reason=f"{type(exc).__name__}"[:120],
+                    source_excerpt="",
+                    market_phase="",
+                    payload_bytes=None,
+                )
+            )
+            scores.append(0)
             log_event(
                 logger,
                 event="macro_fetch_failed",
