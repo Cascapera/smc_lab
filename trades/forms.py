@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from django import forms
 
-from .models import Trade
+from .models import Direction, ResultType, Trade
 
 
 class TradeForm(forms.ModelForm):
@@ -57,4 +57,41 @@ class TradeForm(forms.ModelForm):
         cleaned_data = super().clean()
         if cleaned_data.get("is_public") is False:
             cleaned_data["display_as_anonymous"] = True
+        self.avisos = self._checar_coerencia(cleaned_data)
         return cleaned_data
+
+    def _checar_coerencia(self, dados: dict) -> list[str]:
+        """
+        Detecta combinações contraditórias, sem impedir o registro.
+
+        Por que importa: os relatórios usam `result_type` para o win rate, mas o
+        SINAL de `profit_amount` para streaks, payoff e profit factor. Quando os
+        dois discordam, as duas métricas deixam de ser comparáveis entre si — e
+        nada avisava o usuário.
+
+        Aviso e não bloqueio porque pode haver registro legítimo que eu não
+        conheço (parcial, ajuste de corretora). Se um dia ficar claro que não há,
+        vira validação.
+        """
+        avisos: list[str] = []
+        resultado = dados.get("result_type")
+        lucro = dados.get("profit_amount")
+        direcao = dados.get("direction")
+        stop = dados.get("stop_price")
+        alvo = dados.get("target_price")
+
+        if resultado and lucro is not None:
+            if resultado == ResultType.GAIN and lucro < 0:
+                avisos.append("Marcado como ganho, mas o resultado financeiro é negativo.")
+            elif resultado == ResultType.LOSS and lucro > 0:
+                avisos.append("Marcado como perda, mas o resultado financeiro é positivo.")
+            elif resultado == ResultType.BREAK_EVEN and lucro != 0:
+                avisos.append("Marcado como empate, mas o resultado financeiro não é zero.")
+
+        if direcao and stop is not None and alvo is not None:
+            if direcao == Direction.BUY and stop > alvo:
+                avisos.append("Em compra, o stop está acima do alvo.")
+            elif direcao == Direction.SELL and stop < alvo:
+                avisos.append("Em venda, o stop está abaixo do alvo.")
+
+        return avisos

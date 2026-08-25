@@ -2,11 +2,13 @@
 Testes do app trades - CRUD, analytics, forms, views e llm_service.
 """
 
+import os
 from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
@@ -43,6 +45,8 @@ from .models import (
     Trend,
     Trigger,
 )
+from .services.analytics_ia import melhora_possivel
+from .tasks import run_ai_analysis
 
 User = get_user_model()
 
@@ -579,82 +583,162 @@ class RunGlobalAnalyticsLLMTest(TestCase):
 # ---------------------------------------------------------------------------
 
 
-class AnalyticsIAViewErrorHandlingTest(TestCase):
-    """Testes do tratamento de AnalyticsLLMError na AnalyticsIAView."""
+class AnalyticsIARunTaskTest(TestCase):
+    """
+    A análise agora roda em background. Estes testes exercitam a task, que é
+    onde o comportamento passou a viver.
+
+    Regressão mantida do incidente anterior: falha da OpenAI não pode gravar o
+    texto de erro em `result` — ele apareceria na tela como "Resumo final" e
+    contaria como a análise da semana do assinante.
+    """
 
     def setUp(self):
         self.user = create_user()
         create_profile(self.user, plan=Plan.PREMIUM)
-        create_trade(self.user)
+        for _ in range(12):
+            create_trade(self.user)
+
+    def _executar(self):
+        run = AIAnalyticsRun.objects.create(user=self.user)
+        run_ai_analysis(run.pk)
+        run.refresh_from_db()
+        return run
 
     @patch("trades.llm_service.run_analytics_llm")
-    def test_falha_da_llm_marca_execucao_como_failed(self, mock_run):
-        """
-        Antes, o texto de erro era gravado em `result`. Como o limite semanal
-        olhava "tem texto em result", uma indisponibilidade da OpenAI queimava a
-        analise da semana do assinante - e o erro ainda aparecia na tela como
-        "Resumo final".
-        """
+    def test_sucesso_marca_como_success(self, mock_run):
+        mock_run.return_value = "Analise gerada pela IA."
+        run = self._executar()
+        self.assertEqual(run.status, AIRunStatus.SUCCESS)
+        self.assertIn("Analise gerada pela IA.", run.result)
+
+    @patch("trades.llm_service.run_analytics_llm")
+    def test_falha_marca_como_failed_sem_sujar_o_resultado(self, mock_run):
         mock_run.side_effect = AnalyticsLLMError("Erro na API")
-        self.client.force_login(self.user)
-        response = self.client.post(reverse("trades:analytics_ia"))
-        self.assertEqual(response.status_code, 302)
-        self.assertIn("requested=1", response.url)
-        run = AIAnalyticsRun.objects.filter(user=self.user).order_by("-requested_at").first()
-        self.assertIsNotNone(run)
+        run = self._executar()
         self.assertEqual(run.status, AIRunStatus.FAILED)
         self.assertEqual(run.result, "")
         self.assertIn("Erro na API", run.error_detail)
 
     @patch("trades.llm_service.run_analytics_llm")
-    def test_falha_nao_aparece_como_resumo_na_tela(self, mock_run):
-        mock_run.side_effect = AnalyticsLLMError("Erro na API")
-        self.client.force_login(self.user)
-        self.client.post(reverse("trades:analytics_ia"))
-        response = self.client.get(reverse("trades:analytics_ia"))
-        self.assertIsNone(response.context["ai_last_run"])
-
-    @patch("trades.llm_service.run_analytics_llm")
-    def test_falha_nao_consome_a_analise_da_semana(self, mock_run):
-        """O assinante nao pode ficar 7 dias bloqueado por um erro nosso."""
-        mock_run.side_effect = AnalyticsLLMError("Erro na API")
-        self.client.force_login(self.user)
-        self.client.post(reverse("trades:analytics_ia"))
-
-        run = AIAnalyticsRun.objects.filter(user=self.user).first()
-        # Passado o cooldown curto de protecao, pode pedir de novo.
-        run.requested_at = timezone.now() - timedelta(hours=1)
-        run.save(update_fields=["requested_at"])
-
-        response = self.client.get(reverse("trades:analytics_ia"))
-        self.assertTrue(response.context["ai_can_request"])
-
-    @patch("trades.llm_service.run_analytics_llm")
-    def test_cooldown_curto_evita_martelar_a_openai(self, mock_run):
-        mock_run.side_effect = AnalyticsLLMError("Erro na API")
-        self.client.force_login(self.user)
-        self.client.post(reverse("trades:analytics_ia"))
-
-        response = self.client.get(reverse("trades:analytics_ia"))
-        self.assertFalse(response.context["ai_can_request"])
-
-    @patch("trades.llm_service.run_analytics_llm")
-    def test_resposta_vazia_e_tratada_como_falha(self, mock_run):
-        """Sem OPENAI_API_KEY o servico devolve "" - isso nao e uma analise."""
+    def test_resposta_vazia_e_falha(self, mock_run):
+        """Sem OPENAI_API_KEY o serviço devolve texto vazio, que não é análise."""
         mock_run.return_value = ""
-        self.client.force_login(self.user)
-        self.client.post(reverse("trades:analytics_ia"))
-        run = AIAnalyticsRun.objects.filter(user=self.user).first()
+        run = self._executar()
         self.assertEqual(run.status, AIRunStatus.FAILED)
 
     @patch("trades.llm_service.run_analytics_llm")
-    def test_sucesso_marca_execucao_como_success(self, mock_run):
-        mock_run.return_value = "Analise gerada pela IA."
+    def test_erro_inesperado_tambem_encerra_a_execucao(self, mock_run):
+        """Ficar `pending` para sempre travaria o usuário sem mostrar resultado."""
+        mock_run.side_effect = RuntimeError("banco caiu")
+        run = self._executar()
+        self.assertEqual(run.status, AIRunStatus.FAILED)
+
+    @patch("trades.llm_service.run_analytics_llm")
+    def test_reentrega_nao_refaz_chamada_paga(self, mock_run):
+        mock_run.return_value = "Analise."
+        run = AIAnalyticsRun.objects.create(user=self.user)
+        run_ai_analysis(run.pk)
+        run_ai_analysis(run.pk)
+        self.assertEqual(mock_run.call_count, 1)
+
+    def test_execucao_inexistente_nao_quebra(self):
+        self.assertEqual(run_ai_analysis(999999), "run_inexistente")
+
+
+class AnalyticsIAViewAssincronaTest(TestCase):
+    """A chamada à OpenAI saiu do request: ele só cria a execução e enfileira."""
+
+    def setUp(self):
+        self.user = create_user()
+        create_profile(self.user, plan=Plan.PREMIUM)
+        for _ in range(12):
+            create_trade(self.user)
         self.client.force_login(self.user)
+        cache.delete(f"ai-analysis:{self.user.pk}")
+
+    def tearDown(self):
+        cache.delete(f"ai-analysis:{self.user.pk}")
+
+    @patch("trades.views.run_ai_analysis")
+    def test_post_enfileira_e_nao_chama_a_llm(self, mock_task):
+        with patch("trades.llm_service.run_analytics_llm") as mock_llm:
+            resposta = self.client.post(reverse("trades:analytics_ia"))
+
+        self.assertEqual(resposta.status_code, 302)
+        mock_llm.assert_not_called()
+        run = AIAnalyticsRun.objects.get(user=self.user)
+        self.assertEqual(run.status, AIRunStatus.PENDING)
+
+    @patch("trades.views.run_ai_analysis")
+    def test_duplo_clique_gera_uma_execucao_so(self, mock_task):
+        """
+        Sem trava, os dois requests passavam pela checagem antes de qualquer
+        create e, com 2 workers, saíam DUAS chamadas pagas.
+        """
         self.client.post(reverse("trades:analytics_ia"))
-        run = AIAnalyticsRun.objects.filter(user=self.user).first()
-        self.assertEqual(run.status, AIRunStatus.SUCCESS)
-        self.assertIn("Analise gerada pela IA.", run.result)
+        self.client.post(reverse("trades:analytics_ia"))
+        self.assertEqual(AIAnalyticsRun.objects.filter(user=self.user).count(), 1)
+
+    def test_status_devolve_json(self):
+        AIAnalyticsRun.objects.create(user=self.user)
+        resposta = self.client.get(reverse("trades:analytics_ia_status"))
+        self.assertEqual(resposta.status_code, 200)
+        self.assertEqual(resposta.json()["status"], AIRunStatus.PENDING)
+        self.assertFalse(resposta.json()["pronta"])
+
+    def test_status_sinaliza_pronta(self):
+        AIAnalyticsRun.objects.create(user=self.user, status=AIRunStatus.SUCCESS, result="pronto")
+        resposta = self.client.get(reverse("trades:analytics_ia_status"))
+        self.assertTrue(resposta.json()["pronta"])
+
+    def test_status_nao_vaza_execucao_de_outro_usuario(self):
+        outro = create_user(email="outro-ia@test.com")
+        AIAnalyticsRun.objects.create(user=outro, status=AIRunStatus.SUCCESS, result="x")
+        resposta = self.client.get(reverse("trades:analytics_ia_status"))
+        self.assertEqual(resposta.json()["status"], "none")
+
+
+class GateDaAnaliseTest(TestCase):
+    """Quem pode pedir análise, e quando."""
+
+    def setUp(self):
+        self.user = create_user()
+        create_profile(self.user, plan=Plan.PREMIUM)
+        self.client.force_login(self.user)
+
+    def test_poucos_trades_nao_pode_pedir(self):
+        """Relatório sem substância gasta chamada paga e queima a semana."""
+        for _ in range(3):
+            create_trade(self.user)
+        resposta = self.client.get(reverse("trades:analytics_ia"))
+        self.assertFalse(resposta.context["ai_can_request"])
+
+    def test_com_trades_suficientes_pode_pedir(self):
+        for _ in range(12):
+            create_trade(self.user)
+        resposta = self.client.get(reverse("trades:analytics_ia"))
+        self.assertTrue(resposta.context["ai_can_request"])
+
+    def test_backfill_nao_conta_como_trade_novo(self):
+        """
+        `executed_at` é digitado pelo usuário: registrar hoje trades da semana
+        passada dizia "registre um novo trade", e um trade com data futura
+        satisfazia o gate sem nada ter acontecido.
+        """
+        for _ in range(12):
+            create_trade(self.user)
+        run = AIAnalyticsRun.objects.create(
+            user=self.user, status=AIRunStatus.SUCCESS, result="analise"
+        )
+        run.requested_at = timezone.now() - timedelta(days=10)
+        run.save(update_fields=["requested_at"])
+
+        # Trade antigo registrado agora: `created_at` é novo, `executed_at` não.
+        create_trade(self.user, executed_at=timezone.now() - timedelta(days=30))
+
+        resposta = self.client.get(reverse("trades:analytics_ia"))
+        self.assertTrue(resposta.context["ai_can_request"])
 
 
 class GlobalAnalyticsIAViewErrorHandlingTest(TestCase):
@@ -757,3 +841,125 @@ class SafeNextUrlTest(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["next_url"], self.dashboard)
+
+
+# ---------------------------------------------------------------------------
+# Coerência dos dados, limpeza de arquivo e cálculo de melhora (T9, T8, T6)
+# ---------------------------------------------------------------------------
+
+
+class AvisosDeCoerenciaTest(TestCase):
+    """
+    Os relatórios usam `result_type` para o win rate mas o SINAL de
+    `profit_amount` para streaks e profit factor. Quando discordam, as duas
+    métricas deixam de ser comparáveis — e nada avisava o usuário.
+
+    Avisa sem bloquear: pode haver registro legítimo (parcial, ajuste de
+    corretora) que não conhecemos.
+    """
+
+    def _form(self, **override):
+        dados = valid_trade_data()
+        dados.update(override)
+        form = TradeForm(data=dados)
+        form.is_valid()
+        return form
+
+    def test_perda_com_lucro_positivo_avisa(self):
+        form = self._form(result_type=ResultType.LOSS, profit_amount="500.00")
+        self.assertTrue(form.is_valid(), "o registro nao pode ser bloqueado")
+        self.assertTrue(any("perda" in a.lower() for a in form.avisos))
+
+    def test_ganho_com_prejuizo_avisa(self):
+        form = self._form(result_type=ResultType.GAIN, profit_amount="-500.00")
+        self.assertTrue(any("ganho" in a.lower() for a in form.avisos))
+
+    def test_empate_com_valor_avisa(self):
+        form = self._form(result_type=ResultType.BREAK_EVEN, profit_amount="10.00")
+        self.assertTrue(any("empate" in a.lower() for a in form.avisos))
+
+    def test_registro_coerente_nao_gera_aviso(self):
+        form = self._form(result_type=ResultType.GAIN, profit_amount="100.00")
+        self.assertEqual(form.avisos, [])
+
+    def test_aviso_chega_ao_usuario(self):
+        user = create_user()
+        self.client.force_login(user)
+        dados = valid_trade_data(result_type=ResultType.LOSS, profit_amount="500.00")
+        resposta = self.client.post(reverse("trades:trade_add"), data=dados, follow=True)
+        mensagens = [str(m) for m in resposta.context["messages"]]
+        self.assertTrue(any("Atenção" in m for m in mensagens))
+
+
+class LimpezaDeCapturaTest(TestCase):
+    """
+    Trocar ou apagar a captura deixava o arquivo órfão no volume `media`, sem
+    nada que o limpasse depois.
+    """
+
+    def setUp(self):
+        self.user = create_user()
+
+    def _imagem(self, nome="a.png"):
+        return SimpleUploadedFile(
+            nome,
+            (
+                b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+                b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00"
+                b"\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+            ),
+            content_type="image/png",
+        )
+
+    def test_arquivo_antigo_some_ao_trocar(self):
+        trade = create_trade(self.user)
+        trade.screenshot = self._imagem("primeira.png")
+        trade.save()
+        caminho_antigo = trade.screenshot.path
+        self.assertTrue(os.path.exists(caminho_antigo))
+
+        trade.screenshot = self._imagem("segunda.png")
+        trade.save()
+
+        self.assertFalse(os.path.exists(caminho_antigo), "captura anterior ficou orfa")
+        if os.path.exists(trade.screenshot.path):
+            os.remove(trade.screenshot.path)
+
+    def test_arquivo_some_ao_apagar_o_trade(self):
+        trade = create_trade(self.user)
+        trade.screenshot = self._imagem("unica.png")
+        trade.save()
+        caminho = trade.screenshot.path
+
+        trade.delete()
+
+        self.assertFalse(os.path.exists(caminho))
+
+    def test_trade_sem_captura_nao_quebra(self):
+        trade = create_trade(self.user)
+        trade.delete()  # não deve levantar
+
+
+class MelhoraPossivelTest(TestCase):
+    """
+    `improvement_reais` somava os 3 "piores" combos incluindo os positivos: com
+    -100, +50 e +200 o resultado era `min(0, 150) = 0`, e a tela dizia "melhora
+    de R$ 0" enquanto o texto mandava parar de operar combinações lucrativas.
+    """
+
+    def test_ignora_combinacoes_positivas(self):
+        resultado = melhora_possivel(1000, [{"total": -100}])
+        self.assertEqual(resultado["improvement_reais"], 100.0)
+
+    def test_sem_combinacao_negativa_a_melhora_e_zero(self):
+        resultado = melhora_possivel(1000, [])
+        self.assertEqual(resultado["improvement_reais"], 0.0)
+
+    def test_percentual_indefinido_com_lucro_zero(self):
+        """Dividir por 1 transformava R$ 300 em 'melhora de 30000%'."""
+        resultado = melhora_possivel(0, [{"total": -300}])
+        self.assertIsNone(resultado["improvement_pct"])
+
+    def test_percentual_sobre_lucro_real(self):
+        resultado = melhora_possivel(1000, [{"total": -250}])
+        self.assertEqual(resultado["improvement_pct"], 25.0)

@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.db.models import Count
 from django.shortcuts import render
-from django.urls import path
+from django.urls import path, reverse
 from django.utils.html import format_html
 
 from trader_portal.admin_site import admin_site
@@ -72,8 +72,13 @@ class TradeAdmin(admin.ModelAdmin):
         return custom + urls
 
     def screenshot_link(self, obj: Trade):
+        # `obj.screenshot.url` aponta para /media/, que so e servido com DEBUG=True:
+        # em producao o link dava 404. A view de captura ja autoriza staff.
         if obj.screenshot:
-            return format_html('<a href="{}" target="_blank">Abrir</a>', obj.screenshot.url)
+            return format_html(
+                '<a href="{}" target="_blank">Abrir</a>',
+                reverse("trades:trade_screenshot", args=[obj.pk]),
+            )
         return "-"
 
     screenshot_link.short_description = "Captura"
