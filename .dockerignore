@@ -1,0 +1,63 @@
+# =============================================================================
+# Arquivos que NÃO devem entrar na imagem Docker.
+#
+# Sem este arquivo, o `COPY . .` do Dockerfile levava para dentro da imagem:
+# .env / .env.prod (segredos), .git (histórico completo), deploy_key (chave SSH),
+# db.sqlite3 e backups/*.sql (dados). Qualquer `docker save` ou acesso ao daemon
+# expunha tudo isso.
+# =============================================================================
+
+# Segredos e configuração local
+.env
+.env.*
+!.env.example
+deploy_key
+deploy_key.pub
+
+# Git e CI
+.git
+.gitignore
+.github
+.pre-commit-config.yaml
+
+# Ambientes virtuais e caches
+.venv
+venv
+env
+ENV
+__pycache__
+*.py[cod]
+*$py.class
+.ruff_cache
+.pytest_cache
+.mypy_cache
+
+# Banco local, dados e backups
+db.sqlite3
+*.sqlite3
+backups
+celerybeat-schedule
+celerybeat-schedule-shm
+celerybeat-schedule-wal
+
+# Logs e mídia (montados por volume em runtime)
+logs
+media
+staticfiles
+
+# Cobertura e testes
+.coverage
+htmlcov
+.cache
+
+# Documentação e artefatos de análise local
+localdocs
+docs
+*.md
+!README.md
+
+# Editores
+.vscode
+.idea
+*.swp
+*.swo
