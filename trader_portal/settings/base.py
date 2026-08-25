@@ -228,6 +228,13 @@ CELERY_BEAT_SCHEDULE = {
     "macro-collect-every-5min": {
         "task": "macro.tasks.collect_macro_cycle",
         "schedule": crontab(minute="*/5"),  # 00,05,10...
+        # Um ciclo de coleta pode passar de 5 minutos (Playwright em várias
+        # fontes). Sem `expires`, o Beat continua enfileirando e a fila só
+        # cresce: quando o worker vaza, executa uma rajada de coletas atrasadas,
+        # todas com `measurement_time = agora`, gerando buckets pulados e
+        # ciclos duplicados. Com 4 minutos, a coleta que não conseguiu começar
+        # a tempo é descartada e esperamos o próximo agendamento.
+        "options": {"expires": 240},
     },
     "discord-sync-daily": {
         "task": "discord_integration.tasks.sync_all_discord_roles",
