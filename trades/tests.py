@@ -2,6 +2,7 @@
 Testes do app trades - CRUD, analytics, forms, views e llm_service.
 """
 
+from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -26,6 +27,7 @@ from .forms import TradeForm
 from .llm_service import AnalyticsLLMError, run_analytics_llm, run_global_analytics_llm
 from .models import (
     AIAnalyticsRun,
+    AIRunStatus,
     Direction,
     EntryType,
     GlobalAIAnalyticsRun,
@@ -586,7 +588,13 @@ class AnalyticsIAViewErrorHandlingTest(TestCase):
         create_trade(self.user)
 
     @patch("trades.llm_service.run_analytics_llm")
-    def test_exibe_mensagem_amigavel_quando_llm_falha(self, mock_run):
+    def test_falha_da_llm_marca_execucao_como_failed(self, mock_run):
+        """
+        Antes, o texto de erro era gravado em `result`. Como o limite semanal
+        olhava "tem texto em result", uma indisponibilidade da OpenAI queimava a
+        analise da semana do assinante - e o erro ainda aparecia na tela como
+        "Resumo final".
+        """
         mock_run.side_effect = AnalyticsLLMError("Erro na API")
         self.client.force_login(self.user)
         response = self.client.post(reverse("trades:analytics_ia"))
@@ -594,7 +602,59 @@ class AnalyticsIAViewErrorHandlingTest(TestCase):
         self.assertIn("requested=1", response.url)
         run = AIAnalyticsRun.objects.filter(user=self.user).order_by("-requested_at").first()
         self.assertIsNotNone(run)
-        self.assertIn("Erro na geração do relatório", run.result)
+        self.assertEqual(run.status, AIRunStatus.FAILED)
+        self.assertEqual(run.result, "")
+        self.assertIn("Erro na API", run.error_detail)
+
+    @patch("trades.llm_service.run_analytics_llm")
+    def test_falha_nao_aparece_como_resumo_na_tela(self, mock_run):
+        mock_run.side_effect = AnalyticsLLMError("Erro na API")
+        self.client.force_login(self.user)
+        self.client.post(reverse("trades:analytics_ia"))
+        response = self.client.get(reverse("trades:analytics_ia"))
+        self.assertIsNone(response.context["ai_last_run"])
+
+    @patch("trades.llm_service.run_analytics_llm")
+    def test_falha_nao_consome_a_analise_da_semana(self, mock_run):
+        """O assinante nao pode ficar 7 dias bloqueado por um erro nosso."""
+        mock_run.side_effect = AnalyticsLLMError("Erro na API")
+        self.client.force_login(self.user)
+        self.client.post(reverse("trades:analytics_ia"))
+
+        run = AIAnalyticsRun.objects.filter(user=self.user).first()
+        # Passado o cooldown curto de protecao, pode pedir de novo.
+        run.requested_at = timezone.now() - timedelta(hours=1)
+        run.save(update_fields=["requested_at"])
+
+        response = self.client.get(reverse("trades:analytics_ia"))
+        self.assertTrue(response.context["ai_can_request"])
+
+    @patch("trades.llm_service.run_analytics_llm")
+    def test_cooldown_curto_evita_martelar_a_openai(self, mock_run):
+        mock_run.side_effect = AnalyticsLLMError("Erro na API")
+        self.client.force_login(self.user)
+        self.client.post(reverse("trades:analytics_ia"))
+
+        response = self.client.get(reverse("trades:analytics_ia"))
+        self.assertFalse(response.context["ai_can_request"])
+
+    @patch("trades.llm_service.run_analytics_llm")
+    def test_resposta_vazia_e_tratada_como_falha(self, mock_run):
+        """Sem OPENAI_API_KEY o servico devolve "" - isso nao e uma analise."""
+        mock_run.return_value = ""
+        self.client.force_login(self.user)
+        self.client.post(reverse("trades:analytics_ia"))
+        run = AIAnalyticsRun.objects.filter(user=self.user).first()
+        self.assertEqual(run.status, AIRunStatus.FAILED)
+
+    @patch("trades.llm_service.run_analytics_llm")
+    def test_sucesso_marca_execucao_como_success(self, mock_run):
+        mock_run.return_value = "Analise gerada pela IA."
+        self.client.force_login(self.user)
+        self.client.post(reverse("trades:analytics_ia"))
+        run = AIAnalyticsRun.objects.filter(user=self.user).first()
+        self.assertEqual(run.status, AIRunStatus.SUCCESS)
+        self.assertIn("Analise gerada pela IA.", run.result)
 
 
 class GlobalAnalyticsIAViewErrorHandlingTest(TestCase):
@@ -605,13 +665,14 @@ class GlobalAnalyticsIAViewErrorHandlingTest(TestCase):
         create_trade(self.staff_user)
 
     @patch("trades.llm_service.run_global_analytics_llm")
-    def test_exibe_mensagem_amigavel_quando_llm_falha(self, mock_run):
+    def test_falha_da_llm_marca_execucao_como_failed(self, mock_run):
         mock_run.side_effect = AnalyticsLLMError("Erro na API")
         self.client.force_login(self.staff_user)
         response = self.client.post(reverse("trades:analytics_ia_global"))
         self.assertEqual(response.status_code, 302)
         run = GlobalAIAnalyticsRun.objects.order_by("-requested_at").first()
-        self.assertIn("Erro na geração do relatório", run.result)
+        self.assertEqual(run.status, AIRunStatus.FAILED)
+        self.assertEqual(run.result, "")
 
 
 # ---------------------------------------------------------------------------

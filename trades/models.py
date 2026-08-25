@@ -241,10 +241,26 @@ class Trade(models.Model):
         return f"{self.symbol} ({self.get_direction_display()}) - {self.executed_at:%Y-%m-%d %H:%M}"
 
 
+class AIRunStatus(models.TextChoices):
+    """
+    Desfecho de uma execução de análise por IA.
+
+    Existe porque o limite semanal era calculado por "tem texto em `result`", e
+    o texto de erro ("Erro na geração do relatório...") era gravado ali. Uma
+    falha da OpenAI, portanto, consumia a análise da semana do assinante e ainda
+    aparecia na tela como se fosse o resumo da IA.
+    """
+
+    PENDING = "pending", "Pendente"
+    SUCCESS = "success", "Concluída"
+    FAILED = "failed", "Falhou"
+
+
 class AIAnalyticsRun(models.Model):
     """
     Registro de cada execução de análise por IA (limite 1x por semana).
     Só é criado quando há chamada real à LLM. result guarda a resposta da IA.
+    Apenas execuções com status `success` contam para o limite semanal.
     """
 
     user = models.ForeignKey(
@@ -254,6 +270,13 @@ class AIAnalyticsRun(models.Model):
     )
     requested_at = models.DateTimeField("solicitado em", auto_now_add=True)
     result = models.TextField("resultado da análise", blank=True)
+    status = models.CharField(
+        "situação",
+        max_length=10,
+        choices=AIRunStatus.choices,
+        default=AIRunStatus.PENDING,
+    )
+    error_detail = models.TextField("detalhe do erro", blank=True)
 
     class Meta:
         ordering = ("-requested_at",)
@@ -279,6 +302,13 @@ class GlobalAIAnalyticsRun(models.Model):
     )
     requested_at = models.DateTimeField("solicitado em", auto_now_add=True)
     result = models.TextField("resultado da análise", blank=True)
+    status = models.CharField(
+        "situação",
+        max_length=10,
+        choices=AIRunStatus.choices,
+        default=AIRunStatus.PENDING,
+    )
+    error_detail = models.TextField("detalhe do erro", blank=True)
 
     class Meta:
         ordering = ("-requested_at",)

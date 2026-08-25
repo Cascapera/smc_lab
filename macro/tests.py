@@ -6,6 +6,8 @@ from datetime import datetime
 from unittest.mock import patch
 from urllib.parse import urlencode
 
+from django.conf import settings
+from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -17,6 +19,7 @@ from .models import MacroAsset, MacroScore, MacroVariation, SourceChoices
 from .services.collector import _compute_score_and_adjusted_variation, execute_cycle
 from .services.parsers import parse_investing_variation, parse_tradingview_variation
 from .services.utils import align_measurement_time, is_market_closed, parse_variation_percent
+from .tasks import CYCLE_LOCK_KEY, collect_macro_cycle
 
 # ---------------------------------------------------------------------------
 # Utils
@@ -391,3 +394,62 @@ class SMCDashboardViewTest(TestCase):
         response = self.client.get(reverse("macro:painel"))
         self.assertEqual(response.status_code, 302)
         self.assertIn(reverse("accounts:login"), response.url)
+
+
+# ---------------------------------------------------------------------------
+# Task de coleta - trava de ciclo
+# ---------------------------------------------------------------------------
+
+
+class CollectMacroCycleTest(TestCase):
+    """
+    A coleta pode passar de 5 minutos, que é o intervalo do Beat. Sem trava e
+    sem `expires`, o Beat continua enfileirando e a fila só cresce: quando o
+    worker vaza, roda uma rajada de coletas atrasadas, todas com
+    `measurement_time = agora`, gerando buckets pulados e ciclos duplicados.
+    """
+
+    def setUp(self):
+        cache.delete(CYCLE_LOCK_KEY)
+
+    def tearDown(self):
+        cache.delete(CYCLE_LOCK_KEY)
+
+    @patch("macro.tasks.execute_cycle")
+    @patch("macro.tasks.is_market_closed", return_value=False)
+    def test_ciclo_roda_quando_nao_ha_outro(self, _mock_closed, mock_execute):
+        collect_macro_cycle.apply()
+        mock_execute.assert_called_once()
+
+    @patch("macro.tasks.execute_cycle")
+    @patch("macro.tasks.is_market_closed", return_value=False)
+    def test_ciclo_e_pulado_quando_ja_existe_um_rodando(self, _mock_closed, mock_execute):
+        cache.add(CYCLE_LOCK_KEY, "1", 60)
+        collect_macro_cycle.apply()
+        mock_execute.assert_not_called()
+
+    @patch("macro.tasks.execute_cycle")
+    @patch("macro.tasks.is_market_closed", return_value=False)
+    def test_trava_e_liberada_ao_final(self, _mock_closed, mock_execute):
+        collect_macro_cycle.apply()
+        self.assertIsNone(cache.get(CYCLE_LOCK_KEY))
+
+    @patch("macro.tasks.execute_cycle", side_effect=RuntimeError("falha na coleta"))
+    @patch("macro.tasks.is_market_closed", return_value=False)
+    def test_trava_e_liberada_mesmo_com_erro(self, _mock_closed, _mock_execute):
+        """Se a trava vazasse num erro, a coleta pararia até o worker reiniciar."""
+        collect_macro_cycle.apply()
+        self.assertIsNone(cache.get(CYCLE_LOCK_KEY))
+
+    @patch("macro.tasks.execute_cycle")
+    @patch("macro.tasks.is_market_closed", return_value=True)
+    def test_mercado_fechado_nao_toma_a_trava(self, _mock_closed, mock_execute):
+        collect_macro_cycle.apply()
+        mock_execute.assert_not_called()
+        self.assertIsNone(cache.get(CYCLE_LOCK_KEY))
+
+    def test_beat_descarta_coleta_atrasada(self):
+        """`expires` evita que coletas atrasadas se acumulem na fila."""
+        entrada = settings.CELERY_BEAT_SCHEDULE["macro-collect-every-5min"]
+        self.assertIn("expires", entrada.get("options", {}))
+        self.assertLessEqual(entrada["options"]["expires"], 300)

@@ -32,6 +32,7 @@ from .forms import TradeForm
 from .llm_service import AnalyticsLLMError
 from .models import (
     AIAnalyticsRun,
+    AIRunStatus,
     Direction,
     EntryType,
     GlobalAIAnalyticsRun,
@@ -277,28 +278,41 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         return context
 
 
+# Espera curta depois de uma falha da IA. Uma falha não consome a análise da
+# semana, mas sem nenhum limite um erro de integração (chave inválida, cota
+# estourada) permitiria martelar a OpenAI a cada clique.
+AI_FAILURE_COOLDOWN = timedelta(minutes=10)
+
+
 def _can_request_ai_analysis(user):
     """
     Verifica se o usuário pode solicitar nova análise por IA.
-    Só pode quando: (1) passaram 7+ dias desde a última análise e
-    (2) existe pelo menos 1 trade novo desde essa última análise.
+    Só pode quando: (1) passaram 7+ dias desde a última análise **bem-sucedida**
+    e (2) existe pelo menos 1 trade novo desde essa análise.
     Administradores (is_staff ou is_superuser) não têm limite semanal.
-    Retorna (pode_solicitar, proxima_disponivel_em, ultima_execucao, tem_trades_novos, seven_days_passed).
-    """
-    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
-        last_run_any = AIAnalyticsRun.objects.filter(user=user).order_by("-requested_at").first()
-        return (True, None, last_run_any, True, True)
 
-    # Última execução que realmente gerou resultado (chamou LLM)
-    last_run = (
-        AIAnalyticsRun.objects.filter(user=user)
-        .exclude(result="")
-        .order_by("-requested_at")
-        .first()
-    )
-    # Se não há run com resultado, usa qualquer última run para "next_available"
-    last_run_any = AIAnalyticsRun.objects.filter(user=user).order_by("-requested_at").first()
-    ref_run = last_run or last_run_any
+    Só execuções com status `success` contam. Antes, o critério era "tem texto
+    em result" e o texto de erro era gravado ali: uma indisponibilidade da
+    OpenAI bloqueava o assinante por 7 dias e ainda exibia a mensagem de erro
+    como se fosse o resumo da IA.
+
+    Retorna (pode_solicitar, proxima_disponivel_em, ultima_execucao_ok,
+             tem_trades_novos, seven_days_passed).
+    """
+    runs = AIAnalyticsRun.objects.filter(user=user)
+    last_success = runs.filter(status=AIRunStatus.SUCCESS).order_by("-requested_at").first()
+
+    # Falha recente: segura por alguns minutos, sem queimar a análise da semana.
+    last_failure = runs.filter(status=AIRunStatus.FAILED).order_by("-requested_at").first()
+    if last_failure:
+        retry_at = last_failure.requested_at + AI_FAILURE_COOLDOWN
+        if retry_at > timezone.now():
+            return False, retry_at, last_success, True, True
+
+    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        return True, None, last_success, True, True
+
+    ref_run = last_success
 
     seven_days_passed = ref_run is None or (
         ref_run.requested_at + timedelta(days=7) <= timezone.now()
@@ -310,12 +324,10 @@ def _can_request_ai_analysis(user):
 
     can_request = seven_days_passed and has_new_trades
     next_available = None
-    if ref_run and not seven_days_passed:
-        next_available = ref_run.requested_at + timedelta(days=7)
-    elif ref_run and seven_days_passed and not has_new_trades:
+    if ref_run and not can_request:
         next_available = ref_run.requested_at + timedelta(days=7)
 
-    return can_request, next_available, last_run, has_new_trades, seven_days_passed
+    return can_request, next_available, last_success, has_new_trades, seven_days_passed
 
 
 class AdvancedDashboardView(PlanRequiredMixin, TemplateView):
@@ -663,13 +675,18 @@ class AnalyticsIAView(PlanRequiredMixin, TemplateView):
 
         run = AIAnalyticsRun.objects.create(user=request.user)
         try:
-            result_text = run_analytics_llm(context)
+            llm_text = run_analytics_llm(context)
+            if not (llm_text or "").strip():
+                # Sem chave configurada ou resposta vazia: é falha, não análise.
+                raise AnalyticsLLMError("A IA não retornou texto.")
+
+            result_text = llm_text
             rules_text = get_analytics_rules_text(
                 context.get("result_vs_technical_pct"),
                 (context.get("advanced") or {}).get("win_rate"),
             )
             if rules_text:
-                result_text = (result_text or "") + "\n\n" + rules_text
+                result_text = result_text + "\n\n" + rules_text
 
             book_text = get_book_recommendations_text(
                 context.get("top3_worst_combos") or [],
@@ -678,17 +695,22 @@ class AnalyticsIAView(PlanRequiredMixin, TemplateView):
                 url_black_book=getattr(django_settings, "BOOK_BLACK_BOOK_URL", "") or "",
             )
             if book_text:
-                result_text = (result_text or "") + "\n\n" + book_text
+                result_text = result_text + "\n\n" + book_text
 
-            run.result = result_text or "A IA não retornou texto. Tente novamente mais tarde."
-            run.save(update_fields=["result"])
+            run.result = result_text
+            run.status = AIRunStatus.SUCCESS
+            run.save(update_fields=["result", "status"])
             messages.success(request, "Análise concluída. Veja o resultado abaixo.")
-        except AnalyticsLLMError:
-            run.result = "Erro na geração do relatório. Tente novamente em alguns minutos."
-            run.save(update_fields=["result"])
+        except AnalyticsLLMError as exc:
+            # Não gravamos o texto de erro em `result`: ele apareceria na tela
+            # como "Resumo final" e contaria como a análise da semana.
+            run.status = AIRunStatus.FAILED
+            run.error_detail = str(exc)[:2000] or "AnalyticsLLMError"
+            run.save(update_fields=["status", "error_detail"])
             messages.warning(
                 request,
-                "Erro na geração do relatório, desculpe o inconveniente, tente novamente em alguns minutos.",
+                "Erro na geração do relatório, desculpe o inconveniente, "
+                "tente novamente em alguns minutos.",
             )
         return redirect(reverse("trades:analytics_ia") + "?requested=1")
 
@@ -804,7 +826,21 @@ def _can_request_global_ai_analysis(user):
     if not (getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)):
         return False, None, None, False, False
 
-    last_run = GlobalAIAnalyticsRun.objects.exclude(result="").order_by("-requested_at").first()
+    last_failure = (
+        GlobalAIAnalyticsRun.objects.filter(status=AIRunStatus.FAILED)
+        .order_by("-requested_at")
+        .first()
+    )
+    last_run = (
+        GlobalAIAnalyticsRun.objects.filter(status=AIRunStatus.SUCCESS)
+        .order_by("-requested_at")
+        .first()
+    )
+    if last_failure:
+        retry_at = last_failure.requested_at + AI_FAILURE_COOLDOWN
+        if retry_at > timezone.now():
+            return False, retry_at, last_run, True, True
+
     seven_days_passed = last_run is None or (
         last_run.requested_at + timedelta(days=7) <= timezone.now()
     )
@@ -1004,14 +1040,19 @@ class GlobalAnalyticsIAView(StaffRequiredMixin, TemplateView):
         run = GlobalAIAnalyticsRun.objects.create(requested_by=request.user)
         try:
             result_text = run_global_analytics_llm(context)
-            run.result = result_text or "A IA não retornou texto. Tente novamente mais tarde."
-            run.save(update_fields=["result"])
+            if not (result_text or "").strip():
+                raise AnalyticsLLMError("A IA não retornou texto.")
+            run.result = result_text
+            run.status = AIRunStatus.SUCCESS
+            run.save(update_fields=["result", "status"])
             messages.success(request, "Análise global concluída. Veja o resultado abaixo.")
-        except AnalyticsLLMError:
-            run.result = "Erro na geração do relatório. Tente novamente em alguns minutos."
-            run.save(update_fields=["result"])
+        except AnalyticsLLMError as exc:
+            run.status = AIRunStatus.FAILED
+            run.error_detail = str(exc)[:2000] or "AnalyticsLLMError"
+            run.save(update_fields=["status", "error_detail"])
             messages.warning(
                 request,
-                "Erro na geração do relatório, desculpe o inconveniente, tente novamente em alguns minutos.",
+                "Erro na geração do relatório, desculpe o inconveniente, "
+                "tente novamente em alguns minutos.",
             )
         return redirect(reverse("trades:analytics_ia_global") + "?requested=1")
