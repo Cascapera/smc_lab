@@ -279,11 +279,13 @@ class SubscriptionModelTest(TestCase):
 # ---------------------------------------------------------------------------
 
 
-def _payment_payload(user, *, payment_id="pay_1", status="approved", plan_key="basic_monthly"):
+def _payment_payload(
+    user, *, payment_id="pay_1", status="approved", plan_key="basic_monthly", amount=79.90
+):
     return {
         "id": payment_id,
         "status": status,
-        "transaction_amount": 79.90,
+        "transaction_amount": amount,
         "currency_id": "BRL",
         "external_reference": f"user:{user.id}|plan:{plan_key}|ts:1",
         "metadata": {"user_id": user.id, "plan_key": plan_key, "plan": "basic"},
@@ -699,7 +701,7 @@ class RankingDePlanosTest(TestCase):
 
     def test_evento_superior_faz_upgrade(self):
         self._dar_plano("basic", dias=20)
-        payload = _payment_payload(self.user, payment_id="pay_pp")
+        payload = _payment_payload(self.user, payment_id="pay_pp", amount=1800.00)
         payload["metadata"]["plan"] = "premium_plus"
         payload["metadata"]["plan_key"] = "premium_plus_annual"
 
@@ -834,3 +836,197 @@ class WebhookErroTransitorioTest(TestCase):
     def test_400_nao_pede_reenvio(self, mock_fetch):
         mock_fetch.side_effect = self._http_error(400)
         self.assertEqual(self._post().status_code, 200)
+
+
+# ---------------------------------------------------------------------------
+# Roteamento do webhook por tipo de evento (P4)
+# ---------------------------------------------------------------------------
+
+
+@override_settings(MERCADOPAGO_WEBHOOK_SECRET="")
+class WebhookRoteamentoTest(TestCase):
+    """
+    Antes, tudo que não fosse exatamente `preapproval` caía no fluxo de
+    pagamento. Um `subscription_preapproval` (formato atual para eventos de
+    assinatura) virava `fetch_payment(<id de preapproval>)`, dava 404 e sumia:
+    cancelamento, pausa e expiração nunca chegavam ao banco.
+    """
+
+    def setUp(self):
+        self.user = create_user()
+        self.profile = self.user.profile
+        self.url = reverse("payments:webhook")
+
+    def _post(self, tipo, ident="rec_1"):
+        return self.client.post(
+            self.url,
+            data=json.dumps({"type": tipo, "data": {"id": ident}}),
+            content_type="application/json",
+        )
+
+    @patch("payments.views.fetch_payment")
+    @patch("payments.views.fetch_preapproval")
+    def test_preapproval_vai_para_o_fluxo_de_assinatura(self, mock_pre, mock_pay):
+        mock_pre.return_value = _preapproval_payload(self.user, preapproval_id="rec_1")
+        self.assertEqual(self._post("preapproval").status_code, 200)
+        mock_pre.assert_called_once()
+        mock_pay.assert_not_called()
+
+    @patch("payments.views.fetch_payment")
+    @patch("payments.views.fetch_preapproval")
+    def test_subscription_preapproval_tambem_vai_para_assinatura(self, mock_pre, mock_pay):
+        """Este era o caso que sumia silenciosamente."""
+        mock_pre.return_value = _preapproval_payload(self.user, preapproval_id="rec_1")
+        self.assertEqual(self._post("subscription_preapproval").status_code, 200)
+        mock_pre.assert_called_once()
+        mock_pay.assert_not_called()
+
+    @patch("payments.views.fetch_payment")
+    @patch("payments.views.fetch_preapproval")
+    def test_cancelamento_via_subscription_preapproval_chega_ao_banco(self, mock_pre, mock_pay):
+        Subscription.objects.create(
+            user=self.user,
+            plan="basic",
+            plan_key="basic_monthly",
+            amount=Decimal("79.90"),
+            status=SubscriptionStatus.AUTHORIZED,
+            mp_preapproval_id="rec_1",
+        )
+        mock_pre.return_value = _preapproval_payload(
+            self.user, preapproval_id="rec_1", status="cancelled"
+        )
+
+        self._post("subscription_preapproval")
+
+        assinatura = Subscription.objects.get(mp_preapproval_id="rec_1")
+        self.assertEqual(assinatura.status, "cancelled")
+
+    @patch("payments.views.fetch_payment")
+    @patch("payments.views.fetch_preapproval")
+    def test_payment_vai_para_o_fluxo_de_pagamento(self, mock_pre, mock_pay):
+        mock_pay.return_value = _payment_payload(self.user, payment_id="rec_1")
+        self.assertEqual(self._post("payment").status_code, 200)
+        mock_pay.assert_called_once()
+        mock_pre.assert_not_called()
+
+    @patch("payments.views.fetch_payment")
+    @patch("payments.views.fetch_authorized_payment")
+    def test_subscription_authorized_payment_usa_endpoint_proprio(self, mock_auth, mock_pay):
+        """
+        O id de um authorized payment não existe em /v1/payments/{id}: consultar
+        lá dava 404 e a cobrança recorrente sumia.
+        """
+        mock_auth.return_value = {"id": "rec_1", "payment": {"id": "pay_99"}}
+        mock_pay.return_value = _payment_payload(self.user, payment_id="pay_99")
+
+        self.assertEqual(self._post("subscription_authorized_payment").status_code, 200)
+
+        mock_auth.assert_called_once_with("rec_1")
+        mock_pay.assert_called_once_with("pay_99")
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.plan, "basic")
+
+    @patch("payments.views.fetch_authorized_payment")
+    def test_authorized_payment_sem_pagamento_embutido(self, mock_auth):
+        mock_auth.return_value = {"id": "rec_1"}
+        self.assertEqual(self._post("subscription_authorized_payment").status_code, 200)
+
+    @patch("payments.views.fetch_payment")
+    @patch("payments.views.fetch_preapproval")
+    def test_topic_desconhecido_nao_adivinha(self, mock_pre, mock_pay):
+        """
+        Adivinhar era o bug: um id de assinatura consultado como pagamento dava
+        404 e o evento se perdia. Agora não consulta nada e registra.
+        """
+        self.assertEqual(self._post("formato_que_nao_conhecemos").status_code, 200)
+        mock_pay.assert_not_called()
+        mock_pre.assert_not_called()
+
+    @patch("payments.views.fetch_payment")
+    def test_evento_sem_id_e_ignorado(self, mock_pay):
+        resposta = self.client.post(
+            self.url, data=json.dumps({"type": "payment"}), content_type="application/json"
+        )
+        self.assertEqual(resposta.status_code, 200)
+        mock_pay.assert_not_called()
+
+
+class ExtractPaymentIdRetornoTest(TestCase):
+    """
+    A back_url do Mercado Pago devolve `payment_id`, `collection_id` e
+    `preference_id`. Nenhum era reconhecido: a página de retorno só olhava
+    `data.id` e `id`, então pagamento avulso dependia exclusivamente do webhook.
+    """
+
+    def test_reconhece_payment_id_do_retorno(self):
+        self.assertEqual(extract_payment_id({"payment_id": "123"}, {}), "123")
+
+    def test_reconhece_collection_id(self):
+        self.assertEqual(extract_payment_id({"collection_id": "456"}, {}), "456")
+
+    def test_reconhece_preapproval_id(self):
+        self.assertEqual(extract_payment_id({"preapproval_id": "pre_1"}, {}), "pre_1")
+
+    def test_ignora_collection_id_nulo(self):
+        """O MP manda `collection_id=null` como string quando não houve pagamento."""
+        self.assertIsNone(extract_payment_id({"collection_id": "null"}, {}))
+
+    def test_data_id_tem_prioridade(self):
+        self.assertEqual(
+            extract_payment_id({"data.id": "999", "payment_id": "123"}, {}),
+            "999",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Valor e moeda do pagamento (P9)
+# ---------------------------------------------------------------------------
+
+
+class ValorDoPagamentoTest(TestCase):
+    """
+    Qualquer pagamento aprovado na conta com `metadata.plan_key` liberava o
+    plano correspondente, sem conferir valor. O plano oculto
+    `premium_plus_test` custa R$ 5,00 e usa o mesmo caminho do
+    `premium_plus_annual`, de R$ 1.800,00.
+    """
+
+    def setUp(self):
+        self.user = create_user()
+        self.profile = self.user.profile
+
+    def _payload_premium_plus(self, amount):
+        payload = _payment_payload(self.user, payment_id="pay_pp", amount=amount)
+        payload["metadata"]["plan"] = "premium_plus"
+        payload["metadata"]["plan_key"] = "premium_plus_annual"
+        return payload
+
+    def test_valor_menor_nao_libera_plano(self):
+        resultado = apply_payment_event(self._payload_premium_plus(5.00))
+
+        self.assertEqual(resultado, plans.IGNORED_VALOR_INVALIDO)
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.plan, "free")
+
+    def test_valor_correto_libera(self):
+        resultado = apply_payment_event(self._payload_premium_plus(1800.00))
+        self.assertEqual(resultado, plans.APPLIED)
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.plan, "premium_plus")
+
+    def test_tolera_diferenca_de_centavo(self):
+        """Arredondamento na conversão para float do payload do MP."""
+        resultado = apply_payment_event(self._payload_premium_plus(1799.995))
+        self.assertEqual(resultado, plans.APPLIED)
+
+    def test_moeda_diferente_nao_libera(self):
+        payload = self._payload_premium_plus(1800.00)
+        payload["currency_id"] = "USD"
+        resultado = apply_payment_event(payload)
+        self.assertEqual(resultado, plans.IGNORED_VALOR_INVALIDO)
+
+    def test_plano_desconhecido_nao_libera(self):
+        payload = _payment_payload(self.user, payment_id="pay_x")
+        payload["metadata"]["plan_key"] = "plano_que_nao_existe"
+        resultado = apply_payment_event(payload)
+        self.assertEqual(resultado, plans.IGNORED_VALOR_INVALIDO)

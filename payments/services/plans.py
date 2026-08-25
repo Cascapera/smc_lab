@@ -52,6 +52,7 @@ IGNORED_NO_METADATA = "ignored_no_metadata"
 IGNORED_NO_PROFILE = "ignored_no_profile"
 IGNORED_STATUS = "ignored_status"
 IGNORED_NO_ID = "ignored_no_id"
+IGNORED_VALOR_INVALIDO = "ignored_valor_invalido"
 
 _REVOKE_STATUSES = {PaymentStatus.CHARGEDBACK, PaymentStatus.REFUNDED}
 _END_STATUSES = {
@@ -75,6 +76,38 @@ def _to_decimal(value: object, default: str = "0.00") -> Decimal:
         return Decimal(str(value))
     except (TypeError, ValueError, InvalidOperation):
         return Decimal(default)
+
+
+def _valor_confere(plan_key: str, payment_data: dict) -> tuple[bool, str]:
+    """
+    Confere se o valor pago corresponde ao plano que o metadata reivindica.
+
+    Sem esta checagem, qualquer pagamento aprovado na conta com
+    `metadata.plan_key` liberava o plano correspondente, independentemente do
+    valor. O plano oculto `premium_plus_test` custa R$ 5,00 e usa exatamente o
+    mesmo caminho do `premium_plus_annual`, de R$ 1.800,00.
+
+    Tolerância de 1 centavo por causa de arredondamento na conversão para float
+    que o Mercado Pago faz no payload.
+    """
+    config = settings.MERCADOPAGO_PLANS.get(plan_key)
+    if not config:
+        return False, f"plano desconhecido: {plan_key}"
+
+    esperado = _to_decimal(config.get("amount"), "0.00")
+    if esperado <= 0:
+        return True, ""
+
+    pago = _to_decimal(payment_data.get("transaction_amount"), "0.00")
+    if pago < esperado - Decimal("0.01"):
+        return False, f"valor pago {pago} menor que {esperado} do plano {plan_key}"
+
+    moeda_paga = (payment_data.get("currency_id") or "").upper()
+    moeda_esperada = (settings.MERCADOPAGO_CURRENCY or "BRL").upper()
+    if moeda_paga and moeda_paga != moeda_esperada:
+        return False, f"moeda {moeda_paga} diferente de {moeda_esperada}"
+
+    return True, ""
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +185,17 @@ def apply_payment_event(
             return ALREADY_PROCESSED
         if not plan_key or not plan:
             return IGNORED_NO_METADATA
+
+        confere, motivo = _valor_confere(plan_key, payment_data)
+        if not confere:
+            logger.error(
+                "[payments] Pagamento %s NAO liberou plano para user_id=%s: %s",
+                mp_payment_id,
+                user_id,
+                motivo,
+            )
+            return IGNORED_VALOR_INVALIDO
+
         _apply_plan(profile, plan_key, plan)
         logger.info(
             "[payments] Plano %s aplicado para user_id=%s (payment %s)",
