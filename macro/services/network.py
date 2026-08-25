@@ -3,7 +3,7 @@ import logging
 import random
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
@@ -61,20 +61,41 @@ def _classify_playwright_error(exc: Exception) -> Tuple[str, str]:
     error_msg = str(exc).lower()
     error_type = type(exc).__name__
 
-    # Bloqueio de IP/proxy
+    # Rede: DNS, conexao recusada, reset. Sao transitorios.
+    #
+    # Vinham antes na lista de "bloqueio de IP", junto com o coringa `net::err_`.
+    # Isso importava muito: `fetch_html` so aciona a cadeia de fallback para
+    # status `fetch_error`/`no_data`, e o bloqueio vira status `blocked`. Ou
+    # seja, uma queda de DNS de 5 segundos fazia o ativo pular XHR, jina e
+    # Playwright e ficar sem dado no ciclo inteiro.
+    if any(
+        keyword in error_msg
+        for keyword in [
+            "err_name_not_resolved",
+            "err_name_resolution_failed",
+            "err_connection_refused",
+            "err_connection_reset",
+            "err_connection_closed",
+            "err_connection_timed_out",
+            "err_internet_disconnected",
+            "err_address_unreachable",
+            "err_network_changed",
+        ]
+    ):
+        return "playwright_connection_error", error_type
+
+    # Bloqueio de fato: a resposta chegou e negou acesso.
     if any(
         keyword in error_msg
         for keyword in [
             "err_aborted",
-            "err_connection_refused",
-            "err_connection_reset",
-            "err_connection_closed",
-            "net::err_",
             "403",
             "forbidden",
             "blocked",
             "access denied",
             "frame was detached",
+            "err_blocked_by",
+            "err_too_many_redirects",
         ]
     ):
         return "playwright_ip_block", error_type
@@ -149,15 +170,22 @@ def _fetch_tradingview_playwright(asset: MacroAsset) -> FetchOutcome:
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True, proxy=_get_playwright_proxy())
-            page = browser.new_page()
-            page.goto(asset.url, wait_until="networkidle", timeout=config.PLAYWRIGHT_TIMEOUT_MS)
-            if config.PLAYWRIGHT_WAIT_MS > 0:
-                page.wait_for_timeout(config.PLAYWRIGHT_WAIT_MS)
-            html = page.content()
-            browser.close()
-            if not html:
-                return FetchOutcome(html=None, status="no_data", block_reason="empty_html")
-            return FetchOutcome(html=html, status="ok")
+            try:
+                page = browser.new_page()
+                page.goto(asset.url, wait_until="networkidle", timeout=config.PLAYWRIGHT_TIMEOUT_MS)
+                if config.PLAYWRIGHT_WAIT_MS > 0:
+                    page.wait_for_timeout(config.PLAYWRIGHT_WAIT_MS)
+                html = page.content()
+                if not html:
+                    return FetchOutcome(html=None, status="no_data", block_reason="empty_html")
+                return FetchOutcome(html=html, status="ok")
+            finally:
+                # Sem isto, um timeout no goto deixava o Chromium vivo: e o que
+                # o restart do worker 3x/dia vinha limpando como 'processos orfaos'.
+                try:
+                    browser.close()
+                except Exception:
+                    pass
     except Exception as exc:
         block_reason, error_type = _classify_playwright_error(exc)
         logger.warning(
@@ -181,18 +209,25 @@ def _fetch_investing_playwright(asset: MacroAsset) -> FetchOutcome:
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True, proxy=_get_playwright_proxy())
-            user_agent = random.choice(config.USER_AGENTS)
-            page = browser.new_page(user_agent=user_agent)
-            page.goto(
-                asset.url, wait_until="domcontentloaded", timeout=config.PLAYWRIGHT_TIMEOUT_MS
-            )
-            if config.PLAYWRIGHT_WAIT_MS > 0:
-                page.wait_for_timeout(config.PLAYWRIGHT_WAIT_MS)
-            html = page.content()
-            browser.close()
-            if not html:
-                return FetchOutcome(html=None, status="no_data", block_reason="empty_html")
-            return FetchOutcome(html=html, status="ok")
+            try:
+                user_agent = random.choice(config.USER_AGENTS)
+                page = browser.new_page(user_agent=user_agent)
+                page.goto(
+                    asset.url, wait_until="domcontentloaded", timeout=config.PLAYWRIGHT_TIMEOUT_MS
+                )
+                if config.PLAYWRIGHT_WAIT_MS > 0:
+                    page.wait_for_timeout(config.PLAYWRIGHT_WAIT_MS)
+                html = page.content()
+                if not html:
+                    return FetchOutcome(html=None, status="no_data", block_reason="empty_html")
+                return FetchOutcome(html=html, status="ok")
+            finally:
+                # Sem isto, um timeout no goto deixava o Chromium vivo: e o que
+                # o restart do worker 3x/dia vinha limpando como 'processos orfaos'.
+                try:
+                    browser.close()
+                except Exception:
+                    pass
     except Exception as exc:
         block_reason, error_type = _classify_playwright_error(exc)
         logger.warning(
@@ -271,7 +306,7 @@ def _get_cached_investing_xhr_endpoint(asset: MacroAsset) -> Optional[str]:
     except ValueError:
         return None
     ttl = timedelta(hours=config.INVESTING_XHR_CACHE_TTL_HOURS)
-    if datetime.utcnow() - updated_at > ttl:
+    if datetime.now(UTC).replace(tzinfo=None) - updated_at > ttl:
         return None
     return entry.get("xhr_url")
 
@@ -280,7 +315,7 @@ def _set_cached_investing_xhr_endpoint(asset: MacroAsset, xhr_url: str) -> None:
     cache = _load_investing_xhr_cache()
     cache[asset.url] = {
         "xhr_url": xhr_url,
-        "updated_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.now(UTC).replace(tzinfo=None).isoformat(),
     }
     _save_investing_xhr_cache(cache)
 
@@ -302,7 +337,7 @@ def _get_cached_tradingview_xhr_endpoint(asset: MacroAsset) -> Optional[str]:
     except ValueError:
         return None
     ttl = timedelta(hours=config.TRADINGVIEW_XHR_CACHE_TTL_HOURS)
-    if datetime.utcnow() - updated_at > ttl:
+    if datetime.now(UTC).replace(tzinfo=None) - updated_at > ttl:
         return None
     return entry.get("xhr_url")
 
@@ -311,7 +346,7 @@ def _set_cached_tradingview_xhr_endpoint(asset: MacroAsset, xhr_url: str) -> Non
     cache = _load_tradingview_xhr_cache()
     cache[asset.url] = {
         "xhr_url": xhr_url,
-        "updated_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.now(UTC).replace(tzinfo=None).isoformat(),
     }
     _save_tradingview_xhr_cache(cache)
 
@@ -355,12 +390,19 @@ def _discover_tradingview_xhr_endpoint(asset: MacroAsset) -> Optional[Tuple[str,
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True, proxy=_get_playwright_proxy())
-            page = browser.new_page()
-            page.on("response", handle_response)
-            page.goto(asset.url, wait_until="networkidle", timeout=config.PLAYWRIGHT_TIMEOUT_MS)
-            if config.PLAYWRIGHT_WAIT_MS > 0:
-                page.wait_for_timeout(config.PLAYWRIGHT_WAIT_MS)
-            browser.close()
+            try:
+                page = browser.new_page()
+                page.on("response", handle_response)
+                page.goto(asset.url, wait_until="networkidle", timeout=config.PLAYWRIGHT_TIMEOUT_MS)
+                if config.PLAYWRIGHT_WAIT_MS > 0:
+                    page.wait_for_timeout(config.PLAYWRIGHT_WAIT_MS)
+            finally:
+                # Sem isto, um timeout no goto deixava o Chromium vivo: e o que
+                # o restart do worker 3x/dia vinha limpando como 'processos orfaos'.
+                try:
+                    browser.close()
+                except Exception:
+                    pass
     except Exception as exc:
         block_reason, error_type = _classify_playwright_error(exc)
         logger.warning(
@@ -428,15 +470,22 @@ def _discover_investing_xhr_endpoint(asset: MacroAsset) -> Optional[Tuple[str, O
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True, proxy=_get_playwright_proxy())
-            user_agent = random.choice(config.USER_AGENTS)
-            page = browser.new_page(user_agent=user_agent)
-            page.on("response", handle_response)
-            page.goto(
-                asset.url, wait_until="domcontentloaded", timeout=config.PLAYWRIGHT_TIMEOUT_MS
-            )
-            if config.PLAYWRIGHT_WAIT_MS > 0:
-                page.wait_for_timeout(config.PLAYWRIGHT_WAIT_MS)
-            browser.close()
+            try:
+                user_agent = random.choice(config.USER_AGENTS)
+                page = browser.new_page(user_agent=user_agent)
+                page.on("response", handle_response)
+                page.goto(
+                    asset.url, wait_until="domcontentloaded", timeout=config.PLAYWRIGHT_TIMEOUT_MS
+                )
+                if config.PLAYWRIGHT_WAIT_MS > 0:
+                    page.wait_for_timeout(config.PLAYWRIGHT_WAIT_MS)
+            finally:
+                # Sem isto, um timeout no goto deixava o Chromium vivo: e o que
+                # o restart do worker 3x/dia vinha limpando como 'processos orfaos'.
+                try:
+                    browser.close()
+                except Exception:
+                    pass
     except Exception as exc:
         block_reason, error_type = _classify_playwright_error(exc)
         logger.warning(
@@ -501,7 +550,11 @@ def fetch_html(asset: MacroAsset) -> FetchOutcome:
         if outcome.html or outcome.status == "ok":
             return outcome
 
-        if config.TRADINGVIEW_XHR_ENABLED and outcome.status in ("fetch_error", "no_data"):
+        if config.TRADINGVIEW_XHR_ENABLED and outcome.status in (
+            "fetch_error",
+            "no_data",
+            "blocked",
+        ):
             discovery = _discover_tradingview_xhr_endpoint(asset)
             if discovery:
                 xhr_url, body = discovery
