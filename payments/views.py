@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 
 import requests
 from django.conf import settings
@@ -33,6 +34,19 @@ from .services.plans import apply_payment_event, apply_preapproval_event
 logger = logging.getLogger(__name__)
 
 
+def _link_de_checkout(recurso: dict) -> str | None:
+    """
+    Link para onde mandar o usuário.
+
+    Em sandbox o campo é `sandbox_init_point`; usar `init_point` ali levava para
+    o checkout de produção. E `redirect(None)` levantava exceção quando o MP
+    respondia 201 sem o campo.
+    """
+    if settings.MERCADOPAGO_USE_SANDBOX:
+        return recurso.get("sandbox_init_point") or recurso.get("init_point")
+    return recurso.get("init_point")
+
+
 class PlanListView(TemplateView):
     template_name = "payments/plans.html"
 
@@ -50,7 +64,17 @@ class PlanListView(TemplateView):
 
 
 class CreateCheckoutView(LoginRequiredMixin, View):
-    def get(self, request: HttpRequest, plan: str) -> HttpResponse:
+    """
+    Inicia o checkout no Mercado Pago.
+
+    Só aceita POST. Como GET, criava preapproval no MP e Subscription no banco
+    como efeito colateral de uma navegação: qualquer prefetch de link (WhatsApp,
+    Slack, o próprio browser) gerava assinatura pendente, e um link em site de
+    terceiro fazia o usuário logado criar uma assinatura sem intenção nenhuma
+    (navegação top-level passa com SameSite=Lax).
+    """
+
+    def post(self, request: HttpRequest, plan: str) -> HttpResponse:
         plan_key = plan.lower()
         if plan_key not in settings.MERCADOPAGO_PLANS:
             messages.error(request, "Plano inválido.")
@@ -73,9 +97,9 @@ class CreateCheckoutView(LoginRequiredMixin, View):
                 "Configure MERCADOPAGO_BACK_URL com a URL pública (ngrok) no .env.",
             )
             return redirect(reverse("payments:plans"))
-        external_reference = (
-            f"user:{request.user.id}|plan:{plan_key}|ts:{int(timezone.now().timestamp())}"
-        )
+        # uuid4 e nao timestamp: em segundos, dois cliques no mesmo segundo geravam
+        # a mesma referencia, e o webhook casava com a assinatura errada.
+        external_reference = f"user:{request.user.id}|plan:{plan_key}|ref:{uuid.uuid4().hex[:12]}"
 
         payer_email = request.user.email
         if settings.MERCADOPAGO_USE_SANDBOX and settings.MERCADOPAGO_TEST_PAYER_EMAIL:
@@ -117,14 +141,27 @@ class CreateCheckoutView(LoginRequiredMixin, View):
             try:
                 preference = create_preference(preference_payload)
             except Exception as exc:
+                # O RuntimeError do serviço carrega o corpo da resposta do MP,
+                # com ids internos e mensagens em inglês. Isso vai para o log,
+                # não para a tela do cliente.
+                logger.exception("[payments] Falha ao criar preferência: %s", exc)
                 messages.error(
                     request,
-                    f"Não foi possível iniciar o pagamento. {exc}",
+                    "Não foi possível iniciar o pagamento agora. "
+                    "Tente novamente em alguns minutos.",
                 )
                 return redirect(reverse("payments:plans"))
 
-            init_point = preference.get("init_point")
-            return redirect(init_point)
+            destino = _link_de_checkout(preference)
+            if not destino:
+                logger.error("[payments] Preferência criada sem init_point: %s", preference)
+                messages.error(
+                    request,
+                    "Não foi possível iniciar o pagamento agora. "
+                    "Tente novamente em alguns minutos.",
+                )
+                return redirect(reverse("payments:plans"))
+            return redirect(destino)
 
         preapproval_payload = {
             "reason": config["label"],
@@ -150,9 +187,10 @@ class CreateCheckoutView(LoginRequiredMixin, View):
         try:
             preapproval = create_preapproval(preapproval_payload)
         except Exception as exc:
+            logger.exception("[payments] Falha ao criar assinatura: %s", exc)
             messages.error(
                 request,
-                f"Não foi possível iniciar a assinatura. {exc}",
+                "Não foi possível iniciar a assinatura agora. Tente novamente em alguns minutos.",
             )
             return redirect(reverse("payments:plans"))
 
@@ -169,8 +207,15 @@ class CreateCheckoutView(LoginRequiredMixin, View):
             raw_payload=preapproval,
         )
 
-        init_point = preapproval.get("init_point")
-        return redirect(init_point)
+        destino = _link_de_checkout(preapproval)
+        if not destino:
+            logger.error("[payments] Preapproval criada sem init_point: %s", preapproval)
+            messages.error(
+                request,
+                "Não foi possível iniciar a assinatura agora. Tente novamente em alguns minutos.",
+            )
+            return redirect(reverse("payments:plans"))
+        return redirect(destino)
 
 
 def _erro_e_transitorio(exc: Exception) -> bool:

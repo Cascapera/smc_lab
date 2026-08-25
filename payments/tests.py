@@ -7,9 +7,11 @@ import hmac
 import json
 from datetime import timedelta
 from decimal import Decimal
+from io import StringIO
 from unittest.mock import patch
 
 import requests
+from django.core.management import call_command
 from django.db.utils import IntegrityError
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -21,6 +23,7 @@ from .models import Payment, PaymentStatus, Subscription, SubscriptionStatus
 from .services import plans
 from .services.mercadopago import extract_payment_id, validate_webhook_signature
 from .services.plans import apply_payment_event, apply_preapproval_event
+from .views import _link_de_checkout
 
 # ---------------------------------------------------------------------------
 # Services - extract_payment_id
@@ -110,13 +113,25 @@ class CreateCheckoutViewTest(TestCase):
         self.user = create_user()
 
     def test_anonimo_redireciona_para_login(self):
-        response = self.client.get(reverse("payments:checkout", kwargs={"plan": "basic_monthly"}))
+        response = self.client.post(reverse("payments:checkout", kwargs={"plan": "basic_monthly"}))
         self.assertEqual(response.status_code, 302)
         self.assertIn(reverse("accounts:login"), response.url)
 
+    def test_get_nao_inicia_checkout(self):
+        """
+        Como GET, o checkout criava preapproval no MP e Subscription no banco
+        como efeito colateral de uma navegacao: prefetch de link gerava
+        assinatura pendente, e um link em site de terceiro fazia o usuario
+        logado criar assinatura sem intencao.
+        """
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("payments:checkout", kwargs={"plan": "basic_monthly"}))
+        self.assertEqual(response.status_code, 405)
+        self.assertEqual(Subscription.objects.count(), 0)
+
     def test_plano_invalido_redireciona_para_plans(self):
         self.client.force_login(self.user)
-        response = self.client.get(
+        response = self.client.post(
             reverse("payments:checkout", kwargs={"plan": "plano_inexistente"})
         )
         self.assertEqual(response.status_code, 302)
@@ -150,7 +165,7 @@ class CreateCheckoutViewTest(TestCase):
         mock_settings.MERCADOPAGO_TRIAL_DAYS = 0
 
         self.client.force_login(self.user)
-        response = self.client.get(reverse("payments:checkout", kwargs={"plan": "basic_monthly"}))
+        response = self.client.post(reverse("payments:checkout", kwargs={"plan": "basic_monthly"}))
 
         self.assertEqual(response.status_code, 302)
         self.assertIn("mercadopago.com", response.url)
@@ -1161,3 +1176,134 @@ class ValidadeDeAssinaturaTest(TestCase):
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.plan, "basic")
         self.assertIsNotNone(self.profile.plan_expires_at)
+
+
+# ---------------------------------------------------------------------------
+# Link de checkout e reconciliação (P15, P12)
+# ---------------------------------------------------------------------------
+
+
+class LinkDeCheckoutTest(TestCase):
+    """
+    `redirect(init_point)` com None levantava exceção quando o MP respondia 201
+    sem o campo. E em sandbox o campo é `sandbox_init_point`: usar `init_point`
+    mandava o usuário para o checkout de produção.
+    """
+
+    @override_settings(MERCADOPAGO_USE_SANDBOX=False)
+    def test_producao_usa_init_point(self):
+        recurso = {"init_point": "https://mp/prod", "sandbox_init_point": "https://mp/sandbox"}
+        self.assertEqual(_link_de_checkout(recurso), "https://mp/prod")
+
+    @override_settings(MERCADOPAGO_USE_SANDBOX=True)
+    def test_sandbox_prefere_sandbox_init_point(self):
+        recurso = {"init_point": "https://mp/prod", "sandbox_init_point": "https://mp/sandbox"}
+        self.assertEqual(_link_de_checkout(recurso), "https://mp/sandbox")
+
+    @override_settings(MERCADOPAGO_USE_SANDBOX=True)
+    def test_sandbox_sem_campo_proprio_cai_no_init_point(self):
+        self.assertEqual(_link_de_checkout({"init_point": "https://mp/prod"}), "https://mp/prod")
+
+    def test_recurso_sem_link_devolve_none(self):
+        self.assertIsNone(_link_de_checkout({}))
+
+
+class ExternalReferenceTest(TestCase):
+    """
+    O `external_reference` usava timestamp em segundos: dois cliques no mesmo
+    segundo geravam a mesma referência e o webhook casava com a assinatura
+    errada.
+    """
+
+    @patch("payments.views.create_preapproval")
+    @patch("payments.views.settings")
+    def test_duas_assinaturas_seguidas_tem_referencias_distintas(self, mock_settings, mock_create):
+        mock_create.return_value = {"id": "pre_x", "init_point": "https://mp/x"}
+        mock_settings.MERCADOPAGO_BACK_URL = "https://exemplo.com/retorno"
+        mock_settings.MERCADOPAGO_WEBHOOK_URL = "https://exemplo.com/webhook"
+        mock_settings.MERCADOPAGO_ACCESS_TOKEN = "token"
+        mock_settings.MERCADOPAGO_USE_SANDBOX = False
+        mock_settings.MERCADOPAGO_TEST_PAYER_EMAIL = ""
+        mock_settings.MERCADOPAGO_CURRENCY = "BRL"
+        mock_settings.MERCADOPAGO_TRIAL_DAYS = 0
+        mock_settings.MERCADOPAGO_PLANS = {
+            "basic_monthly": {
+                "plan": "basic",
+                "label": "Basic Mensal",
+                "amount": Decimal("79.90"),
+                "frequency": 1,
+                "frequency_type": "months",
+                "billing_type": "subscription",
+            }
+        }
+
+        user = create_user()
+        self.client.force_login(user)
+        url = reverse("payments:checkout", kwargs={"plan": "basic_monthly"})
+        self.client.post(url)
+        self.client.post(url)
+
+        referencias = set(Subscription.objects.values_list("external_reference", flat=True))
+        self.assertEqual(len(referencias), 2, "duas assinaturas com a mesma referência")
+
+
+class ReconcileMercadoPagoTest(TestCase):
+    """
+    Rede de segurança para eventos que o webhook perdeu. Reprocessar é seguro
+    porque tudo passa pelo serviço idempotente.
+    """
+
+    def setUp(self):
+        self.user = create_user()
+        self.assinatura = Subscription.objects.create(
+            user=self.user,
+            plan="basic",
+            plan_key="basic_monthly",
+            amount=Decimal("79.90"),
+            status=SubscriptionStatus.PENDING,
+            mp_preapproval_id="pre_recon",
+        )
+
+    @patch("payments.management.commands.reconcile_mercadopago.fetch_preapproval")
+    def test_dry_run_apenas_relata(self, mock_fetch):
+        mock_fetch.return_value = _preapproval_payload(
+            self.user, preapproval_id="pre_recon", status="authorized"
+        )
+        saida = StringIO()
+        call_command("reconcile_mercadopago", "--dry-run", stdout=saida)
+
+        self.assertIn("Simulação", saida.getvalue())
+        self.assinatura.refresh_from_db()
+        self.assertEqual(self.assinatura.status, SubscriptionStatus.PENDING)
+
+    @patch("payments.management.commands.reconcile_mercadopago.fetch_preapproval")
+    def test_corrige_divergencia(self, mock_fetch):
+        mock_fetch.return_value = _preapproval_payload(
+            self.user, preapproval_id="pre_recon", status="authorized"
+        )
+        saida = StringIO()
+        call_command("reconcile_mercadopago", stdout=saida)
+
+        self.assinatura.refresh_from_db()
+        self.assertEqual(self.assinatura.status, "authorized")
+        self.user.profile.refresh_from_db()
+        self.assertEqual(self.user.profile.plan, "basic")
+
+    @patch("payments.management.commands.reconcile_mercadopago.fetch_preapproval")
+    def test_sem_divergencia_nao_altera(self, mock_fetch):
+        self.assinatura.status = "authorized"
+        self.assinatura.save()
+        mock_fetch.return_value = _preapproval_payload(
+            self.user, preapproval_id="pre_recon", status="authorized"
+        )
+        saida = StringIO()
+        call_command("reconcile_mercadopago", stdout=saida)
+        self.assertIn("Nenhuma divergência", saida.getvalue())
+
+    @patch("payments.management.commands.reconcile_mercadopago.fetch_preapproval")
+    def test_falha_de_consulta_nao_interrompe(self, mock_fetch):
+        """Uma assinatura problemática não pode abortar a varredura inteira."""
+        mock_fetch.side_effect = Exception("MP fora do ar")
+        saida = StringIO()
+        call_command("reconcile_mercadopago", stdout=saida)
+        self.assertIn("Falhas de consulta", saida.getvalue())

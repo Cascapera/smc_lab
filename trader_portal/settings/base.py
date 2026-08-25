@@ -253,9 +253,14 @@ CELERY_BEAT_SCHEDULE = {
         "task": "discord_integration.tasks.sync_all_discord_roles",
         "schedule": crontab(minute=0, hour=4),
     },
-    "downgrade-expired-plans-daily": {
+    # De hora em hora, nao 1x/dia: `Profile.plan` e o campo bruto, e ate a task
+    # rodar ele mostra um plano ja vencido como se estivesse ativo. As views usam
+    # `active_plan()` e ja tratam a expiracao, mas o admin e os relatorios leem o
+    # campo direto.
+    "downgrade-expired-plans-hourly": {
         "task": "accounts.tasks.downgrade_expired_plans",
-        "schedule": crontab(minute=0, hour=5),
+        "schedule": crontab(minute=10),
+        "options": {"expires": 1800},
     },
     # Limpeza das variacoes macro antigas. Roda as 03:30, antes da sincronizacao
     # do Discord (04:00) e do downgrade de planos (05:00), e fora do horario de
