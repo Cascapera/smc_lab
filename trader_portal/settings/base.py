@@ -283,6 +283,9 @@ MERCADOPAGO_WEBHOOK_URL = env("MERCADOPAGO_WEBHOOK_URL", default="")
 MERCADOPAGO_WEBHOOK_SECRET = env("MERCADOPAGO_WEBHOOK_SECRET", default="")
 MERCADOPAGO_TEST_PAYER_EMAIL = env("MERCADOPAGO_TEST_PAYER_EMAIL", default="")
 MERCADOPAGO_TRIAL_DAYS = env.int("MERCADOPAGO_TRIAL_DAYS", default=7)
+# Folga apos a data de cobranca antes de o plano cair. Absorve atraso de webhook,
+# retentativa de cartao e fim de semana.
+MERCADOPAGO_GRACE_DAYS = env.int("MERCADOPAGO_GRACE_DAYS", default=3)
 MERCADOPAGO_PREMIUM_PLUS_MONTHLY_PRICE = env(
     "MERCADOPAGO_PREMIUM_PLUS_MONTHLY_PRICE", default="250.00"
 )

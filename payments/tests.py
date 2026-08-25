@@ -1030,3 +1030,134 @@ class ValorDoPagamentoTest(TestCase):
         payload["metadata"]["plan_key"] = "plano_que_nao_existe"
         resultado = apply_payment_event(payload)
         self.assertEqual(resultado, plans.IGNORED_VALOR_INVALIDO)
+
+
+# ---------------------------------------------------------------------------
+# Validade da assinatura espelha o calendário de cobrança do MP (P10)
+# ---------------------------------------------------------------------------
+
+
+@override_settings(MERCADOPAGO_GRACE_DAYS=3)
+class ValidadeDeAssinaturaTest(TestCase):
+    """
+    Numa assinatura mensal, o evento `authorized` somava 30 dias E o primeiro
+    `payment approved` somava outros 30 — **60 dias por uma única cobrança**. A
+    idempotência não pega esse caso: são dois eventos distintos, cada um
+    legítimo uma vez.
+
+    Somar também produzia deriva: meses de 31 dias faziam a validade vencer
+    antes da cobrança seguinte, e o assinante caía para FREE até o webhook
+    chegar.
+    """
+
+    def setUp(self):
+        self.user = create_user()
+        self.profile = self.user.profile
+
+    def _preapproval(self, proxima_cobranca, status="authorized"):
+        payload = _preapproval_payload(self.user, status=status)
+        payload["next_payment_date"] = proxima_cobranca.isoformat()
+        return payload
+
+    def test_authorized_usa_a_proxima_cobranca_e_nao_um_ciclo_inteiro(self):
+        """Com trial de 7 dias, liberar 30 na autorização era dar 23 de graça."""
+        fim_do_trial = timezone.now() + timedelta(days=7)
+
+        apply_preapproval_event(self._preapproval(fim_do_trial))
+
+        self.profile.refresh_from_db()
+        esperado = fim_do_trial + timedelta(days=3)
+        self.assertAlmostEqual(
+            self.profile.plan_expires_at.timestamp(), esperado.timestamp(), delta=5
+        )
+
+    def test_autorizacao_mais_pagamento_nao_dobram_o_periodo(self):
+        """O cenário que dava 60 dias por uma cobrança."""
+        primeira_cobranca = timezone.now() + timedelta(days=30)
+        apply_preapproval_event(self._preapproval(primeira_cobranca))
+
+        agora = timezone.now()
+        pagamento = _payment_payload(self.user, payment_id="pay_ciclo1")
+        pagamento["date_approved"] = agora.isoformat()
+        apply_payment_event(pagamento)
+
+        self.profile.refresh_from_db()
+        dias = (self.profile.plan_expires_at - agora).days
+        self.assertLessEqual(dias, 34, "concedeu mais de um ciclo + carência")
+        self.assertGreaterEqual(dias, 30)
+
+    def test_renovacao_ancora_na_data_do_pagamento(self):
+        """Sem deriva: cada ciclo recalcula a partir da cobrança real."""
+        agora = timezone.now()
+        pagamento = _payment_payload(self.user, payment_id="pay_1")
+        pagamento["date_approved"] = agora.isoformat()
+        apply_payment_event(pagamento)
+
+        self.profile.refresh_from_db()
+        primeira = self.profile.plan_expires_at
+
+        proximo_mes = agora + timedelta(days=31)
+        pagamento2 = _payment_payload(self.user, payment_id="pay_2")
+        pagamento2["date_approved"] = proximo_mes.isoformat()
+        apply_payment_event(pagamento2)
+
+        self.profile.refresh_from_db()
+        esperado = proximo_mes + timedelta(days=33)
+        self.assertAlmostEqual(
+            self.profile.plan_expires_at.timestamp(), esperado.timestamp(), delta=5
+        )
+        self.assertGreater(self.profile.plan_expires_at, primeira)
+
+    def test_validade_nunca_encurta(self):
+        """Ajuste manual do suporte não pode ser desfeito pelo próximo evento."""
+        self.profile.plan = "basic"
+        self.profile.plan_expires_at = timezone.now() + timedelta(days=365)
+        self.profile.save()
+
+        pagamento = _payment_payload(self.user, payment_id="pay_curto")
+        pagamento["date_approved"] = timezone.now().isoformat()
+        apply_payment_event(pagamento)
+
+        self.profile.refresh_from_db()
+        self.assertGreater(self.profile.plan_expires_at, timezone.now() + timedelta(days=300))
+
+    def test_compra_avulsa_continua_somando(self):
+        """One-time não é assinatura: duas compras devem somar período."""
+        payload1 = _payment_payload(
+            self.user, payment_id="pay_a1", plan_key="premium_annual", amount=589.50
+        )
+        payload1["metadata"]["plan"] = "premium"
+        apply_payment_event(payload1)
+        self.profile.refresh_from_db()
+        primeira = self.profile.plan_expires_at
+
+        payload2 = _payment_payload(
+            self.user, payment_id="pay_a2", plan_key="premium_annual", amount=589.50
+        )
+        payload2["metadata"]["plan"] = "premium"
+        apply_payment_event(payload2)
+
+        self.profile.refresh_from_db()
+        self.assertGreater(self.profile.plan_expires_at, primeira + timedelta(days=300))
+
+    def test_guarda_a_proxima_cobranca_na_assinatura(self):
+        """O suporte precisa conferir a validade contra o calendário real."""
+        proxima = timezone.now() + timedelta(days=30)
+        apply_preapproval_event(self._preapproval(proxima))
+
+        assinatura = Subscription.objects.get(mp_preapproval_id="pre_1")
+        self.assertIsNotNone(assinatura.next_payment_date)
+        self.assertAlmostEqual(
+            assinatura.next_payment_date.timestamp(), proxima.timestamp(), delta=5
+        )
+
+    def test_sem_proxima_cobranca_cai_no_modo_aditivo(self):
+        """Se o MP não mandar a data, não podemos ficar sem liberar o plano."""
+        payload = _preapproval_payload(self.user)
+        payload.pop("next_payment_date", None)
+
+        apply_preapproval_event(payload)
+
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.plan, "basic")
+        self.assertIsNotNone(self.profile.plan_expires_at)
