@@ -5,12 +5,17 @@ Testes do app payments - MercadoPago, webhook, views.
 import hashlib
 import hmac
 import json
+from datetime import timedelta
 from decimal import Decimal
+from io import StringIO
 from unittest.mock import patch
 
+import requests
+from django.core.management import call_command
 from django.db.utils import IntegrityError
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from accounts.tests import create_user
 
@@ -18,6 +23,7 @@ from .models import Payment, PaymentStatus, Subscription, SubscriptionStatus
 from .services import plans
 from .services.mercadopago import extract_payment_id, validate_webhook_signature
 from .services.plans import apply_payment_event, apply_preapproval_event
+from .views import _link_de_checkout
 
 # ---------------------------------------------------------------------------
 # Services - extract_payment_id
@@ -107,13 +113,25 @@ class CreateCheckoutViewTest(TestCase):
         self.user = create_user()
 
     def test_anonimo_redireciona_para_login(self):
-        response = self.client.get(reverse("payments:checkout", kwargs={"plan": "basic_monthly"}))
+        response = self.client.post(reverse("payments:checkout", kwargs={"plan": "basic_monthly"}))
         self.assertEqual(response.status_code, 302)
         self.assertIn(reverse("accounts:login"), response.url)
 
+    def test_get_nao_inicia_checkout(self):
+        """
+        Como GET, o checkout criava preapproval no MP e Subscription no banco
+        como efeito colateral de uma navegacao: prefetch de link gerava
+        assinatura pendente, e um link em site de terceiro fazia o usuario
+        logado criar assinatura sem intencao.
+        """
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("payments:checkout", kwargs={"plan": "basic_monthly"}))
+        self.assertEqual(response.status_code, 405)
+        self.assertEqual(Subscription.objects.count(), 0)
+
     def test_plano_invalido_redireciona_para_plans(self):
         self.client.force_login(self.user)
-        response = self.client.get(
+        response = self.client.post(
             reverse("payments:checkout", kwargs={"plan": "plano_inexistente"})
         )
         self.assertEqual(response.status_code, 302)
@@ -147,7 +165,7 @@ class CreateCheckoutViewTest(TestCase):
         mock_settings.MERCADOPAGO_TRIAL_DAYS = 0
 
         self.client.force_login(self.user)
-        response = self.client.get(reverse("payments:checkout", kwargs={"plan": "basic_monthly"}))
+        response = self.client.post(reverse("payments:checkout", kwargs={"plan": "basic_monthly"}))
 
         self.assertEqual(response.status_code, 302)
         self.assertIn("mercadopago.com", response.url)
@@ -276,11 +294,13 @@ class SubscriptionModelTest(TestCase):
 # ---------------------------------------------------------------------------
 
 
-def _payment_payload(user, *, payment_id="pay_1", status="approved", plan_key="basic_monthly"):
+def _payment_payload(
+    user, *, payment_id="pay_1", status="approved", plan_key="basic_monthly", amount=79.90
+):
     return {
         "id": payment_id,
         "status": status,
-        "transaction_amount": 79.90,
+        "transaction_amount": amount,
         "currency_id": "BRL",
         "external_reference": f"user:{user.id}|plan:{plan_key}|ts:1",
         "metadata": {"user_id": user.id, "plan_key": plan_key, "plan": "basic"},
@@ -656,3 +676,634 @@ class WebhookIdempotencyTest(TestCase):
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.plan_expires_at, expira_apos_primeira)
         self.assertEqual(Subscription.objects.filter(mp_preapproval_id="pre_webhook").count(), 1)
+
+
+# ---------------------------------------------------------------------------
+# Regra de ranking: evento de plano inferior não rebaixa plano superior (P3)
+# ---------------------------------------------------------------------------
+
+
+class RankingDePlanosTest(TestCase):
+    """
+    O perfil guarda um único par (plan, plan_expires_at), então qualquer evento
+    sobrescrevia os dois.
+
+    Cenário real: assinante com Basic mensal ativo compra Premium+ anual. Na
+    cobrança mensal seguinte do Basic, o webhook rebaixava o perfil para `basic`
+    e truncava a validade para 30 dias — o usuário perdia ~335 dias já pagos.
+    """
+
+    def setUp(self):
+        self.user = create_user()
+        self.profile = self.user.profile
+
+    def _dar_plano(self, plano, dias):
+        self.profile.plan = plano
+        self.profile.plan_expires_at = timezone.now() + timedelta(days=dias)
+        self.profile.save()
+
+    def test_evento_inferior_nao_rebaixa_plano_vigente(self):
+        self._dar_plano("premium_plus", dias=365)
+        expira_antes = self.profile.plan_expires_at
+
+        apply_payment_event(
+            _payment_payload(self.user, payment_id="pay_basic", plan_key="basic_monthly")
+        )
+
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.plan, "premium_plus")
+        self.assertEqual(self.profile.plan_expires_at, expira_antes)
+
+    def test_evento_superior_faz_upgrade(self):
+        self._dar_plano("basic", dias=20)
+        payload = _payment_payload(self.user, payment_id="pay_pp", amount=1800.00)
+        payload["metadata"]["plan"] = "premium_plus"
+        payload["metadata"]["plan_key"] = "premium_plus_annual"
+
+        apply_payment_event(payload)
+
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.plan, "premium_plus")
+
+    def test_mesmo_plano_acumula_periodo(self):
+        self._dar_plano("basic", dias=10)
+        expira_antes = self.profile.plan_expires_at
+
+        apply_payment_event(_payment_payload(self.user, payment_id="pay_renov"))
+
+        self.profile.refresh_from_db()
+        self.assertGreater(self.profile.plan_expires_at, expira_antes)
+
+    def test_evento_inferior_volta_a_valer_com_plano_expirado(self):
+        """Se o plano superior já venceu, o pagamento do inferior deve valer."""
+        self.profile.plan = "premium_plus"
+        self.profile.plan_expires_at = timezone.now() - timedelta(days=1)
+        self.profile.save()
+
+        apply_payment_event(_payment_payload(self.user, payment_id="pay_basic2"))
+
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.plan, "basic")
+
+    def test_estorno_de_plano_inferior_nao_zera_plano_superior(self):
+        """
+        Antes: chargeback de um Basic zerava o perfil de quem tinha Premium+,
+        porque a revogação só olhava se existia Subscription AUTHORIZED — e
+        compras anuais one-time não criam Subscription.
+        """
+        self._dar_plano("premium_plus", dias=300)
+
+        apply_payment_event(
+            _payment_payload(
+                self.user, payment_id="pay_cb_basic", status="chargeback", plan_key="basic_monthly"
+            )
+        )
+
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.plan, "premium_plus")
+        self.assertIsNotNone(self.profile.plan_expires_at)
+
+    def test_estorno_do_proprio_plano_revoga(self):
+        self._dar_plano("basic", dias=20)
+
+        apply_payment_event(_payment_payload(self.user, payment_id="pay_cb", status="chargeback"))
+
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.plan, "free")
+
+    def test_cancelamento_de_assinatura_inferior_nao_altera_plano_superior(self):
+        self._dar_plano("premium_plus", dias=300)
+        expira_antes = self.profile.plan_expires_at
+        Subscription.objects.create(
+            user=self.user,
+            plan="basic",
+            plan_key="basic_monthly",
+            amount=Decimal("79.90"),
+            status=SubscriptionStatus.AUTHORIZED,
+            mp_preapproval_id="pre_basic",
+        )
+
+        apply_preapproval_event(
+            _preapproval_payload(self.user, preapproval_id="pre_basic", status="cancelled")
+        )
+
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.plan, "premium_plus")
+        self.assertEqual(self.profile.plan_expires_at, expira_antes)
+
+
+# ---------------------------------------------------------------------------
+# Webhook não perde evento quando o Mercado Pago está instável (P5)
+# ---------------------------------------------------------------------------
+
+
+@override_settings(MERCADOPAGO_WEBHOOK_SECRET="")
+class WebhookErroTransitorioTest(TestCase):
+    """
+    Falha ao consultar o MP respondia 200: o MP considera entregue e nunca
+    reenvia, então o pagamento aprovado nunca liberava o plano. Instabilidade de
+    um minuto virava suporte manual.
+    """
+
+    def setUp(self):
+        self.user = create_user()
+        self.url = reverse("payments:webhook")
+
+    def _post(self):
+        return self.client.post(
+            self.url,
+            data=json.dumps({"type": "payment", "data": {"id": "pay_x"}}),
+            content_type="application/json",
+        )
+
+    def _http_error(self, status):
+        resposta = requests.Response()
+        resposta.status_code = status
+        return requests.HTTPError(response=resposta)
+
+    @patch("payments.views.fetch_payment")
+    def test_timeout_pede_reenvio(self, mock_fetch):
+        mock_fetch.side_effect = requests.Timeout("tempo esgotado")
+        self.assertEqual(self._post().status_code, 503)
+
+    @patch("payments.views.fetch_payment")
+    def test_queda_de_conexao_pede_reenvio(self, mock_fetch):
+        mock_fetch.side_effect = requests.ConnectionError("conexao recusada")
+        self.assertEqual(self._post().status_code, 503)
+
+    @patch("payments.views.fetch_payment")
+    def test_erro_500_do_mp_pede_reenvio(self, mock_fetch):
+        mock_fetch.side_effect = self._http_error(500)
+        self.assertEqual(self._post().status_code, 503)
+
+    @patch("payments.views.fetch_payment")
+    def test_rate_limit_pede_reenvio(self, mock_fetch):
+        mock_fetch.side_effect = self._http_error(429)
+        self.assertEqual(self._post().status_code, 503)
+
+    @patch("payments.views.fetch_payment")
+    def test_404_nao_pede_reenvio(self, mock_fetch):
+        """Id que não existe é permanente: reenviar só geraria ruído."""
+        mock_fetch.side_effect = self._http_error(404)
+        self.assertEqual(self._post().status_code, 200)
+
+    @patch("payments.views.fetch_payment")
+    def test_400_nao_pede_reenvio(self, mock_fetch):
+        mock_fetch.side_effect = self._http_error(400)
+        self.assertEqual(self._post().status_code, 200)
+
+
+# ---------------------------------------------------------------------------
+# Roteamento do webhook por tipo de evento (P4)
+# ---------------------------------------------------------------------------
+
+
+@override_settings(MERCADOPAGO_WEBHOOK_SECRET="")
+class WebhookRoteamentoTest(TestCase):
+    """
+    Antes, tudo que não fosse exatamente `preapproval` caía no fluxo de
+    pagamento. Um `subscription_preapproval` (formato atual para eventos de
+    assinatura) virava `fetch_payment(<id de preapproval>)`, dava 404 e sumia:
+    cancelamento, pausa e expiração nunca chegavam ao banco.
+    """
+
+    def setUp(self):
+        self.user = create_user()
+        self.profile = self.user.profile
+        self.url = reverse("payments:webhook")
+
+    def _post(self, tipo, ident="rec_1"):
+        return self.client.post(
+            self.url,
+            data=json.dumps({"type": tipo, "data": {"id": ident}}),
+            content_type="application/json",
+        )
+
+    @patch("payments.views.fetch_payment")
+    @patch("payments.views.fetch_preapproval")
+    def test_preapproval_vai_para_o_fluxo_de_assinatura(self, mock_pre, mock_pay):
+        mock_pre.return_value = _preapproval_payload(self.user, preapproval_id="rec_1")
+        self.assertEqual(self._post("preapproval").status_code, 200)
+        mock_pre.assert_called_once()
+        mock_pay.assert_not_called()
+
+    @patch("payments.views.fetch_payment")
+    @patch("payments.views.fetch_preapproval")
+    def test_subscription_preapproval_tambem_vai_para_assinatura(self, mock_pre, mock_pay):
+        """Este era o caso que sumia silenciosamente."""
+        mock_pre.return_value = _preapproval_payload(self.user, preapproval_id="rec_1")
+        self.assertEqual(self._post("subscription_preapproval").status_code, 200)
+        mock_pre.assert_called_once()
+        mock_pay.assert_not_called()
+
+    @patch("payments.views.fetch_payment")
+    @patch("payments.views.fetch_preapproval")
+    def test_cancelamento_via_subscription_preapproval_chega_ao_banco(self, mock_pre, mock_pay):
+        Subscription.objects.create(
+            user=self.user,
+            plan="basic",
+            plan_key="basic_monthly",
+            amount=Decimal("79.90"),
+            status=SubscriptionStatus.AUTHORIZED,
+            mp_preapproval_id="rec_1",
+        )
+        mock_pre.return_value = _preapproval_payload(
+            self.user, preapproval_id="rec_1", status="cancelled"
+        )
+
+        self._post("subscription_preapproval")
+
+        assinatura = Subscription.objects.get(mp_preapproval_id="rec_1")
+        self.assertEqual(assinatura.status, "cancelled")
+
+    @patch("payments.views.fetch_payment")
+    @patch("payments.views.fetch_preapproval")
+    def test_payment_vai_para_o_fluxo_de_pagamento(self, mock_pre, mock_pay):
+        mock_pay.return_value = _payment_payload(self.user, payment_id="rec_1")
+        self.assertEqual(self._post("payment").status_code, 200)
+        mock_pay.assert_called_once()
+        mock_pre.assert_not_called()
+
+    @patch("payments.views.fetch_payment")
+    @patch("payments.views.fetch_authorized_payment")
+    def test_subscription_authorized_payment_usa_endpoint_proprio(self, mock_auth, mock_pay):
+        """
+        O id de um authorized payment não existe em /v1/payments/{id}: consultar
+        lá dava 404 e a cobrança recorrente sumia.
+        """
+        mock_auth.return_value = {"id": "rec_1", "payment": {"id": "pay_99"}}
+        mock_pay.return_value = _payment_payload(self.user, payment_id="pay_99")
+
+        self.assertEqual(self._post("subscription_authorized_payment").status_code, 200)
+
+        mock_auth.assert_called_once_with("rec_1")
+        mock_pay.assert_called_once_with("pay_99")
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.plan, "basic")
+
+    @patch("payments.views.fetch_authorized_payment")
+    def test_authorized_payment_sem_pagamento_embutido(self, mock_auth):
+        mock_auth.return_value = {"id": "rec_1"}
+        self.assertEqual(self._post("subscription_authorized_payment").status_code, 200)
+
+    @patch("payments.views.fetch_payment")
+    @patch("payments.views.fetch_preapproval")
+    def test_topic_desconhecido_nao_adivinha(self, mock_pre, mock_pay):
+        """
+        Adivinhar era o bug: um id de assinatura consultado como pagamento dava
+        404 e o evento se perdia. Agora não consulta nada e registra.
+        """
+        self.assertEqual(self._post("formato_que_nao_conhecemos").status_code, 200)
+        mock_pay.assert_not_called()
+        mock_pre.assert_not_called()
+
+    @patch("payments.views.fetch_payment")
+    def test_evento_sem_id_e_ignorado(self, mock_pay):
+        resposta = self.client.post(
+            self.url, data=json.dumps({"type": "payment"}), content_type="application/json"
+        )
+        self.assertEqual(resposta.status_code, 200)
+        mock_pay.assert_not_called()
+
+
+class ExtractPaymentIdRetornoTest(TestCase):
+    """
+    A back_url do Mercado Pago devolve `payment_id`, `collection_id` e
+    `preference_id`. Nenhum era reconhecido: a página de retorno só olhava
+    `data.id` e `id`, então pagamento avulso dependia exclusivamente do webhook.
+    """
+
+    def test_reconhece_payment_id_do_retorno(self):
+        self.assertEqual(extract_payment_id({"payment_id": "123"}, {}), "123")
+
+    def test_reconhece_collection_id(self):
+        self.assertEqual(extract_payment_id({"collection_id": "456"}, {}), "456")
+
+    def test_reconhece_preapproval_id(self):
+        self.assertEqual(extract_payment_id({"preapproval_id": "pre_1"}, {}), "pre_1")
+
+    def test_ignora_collection_id_nulo(self):
+        """O MP manda `collection_id=null` como string quando não houve pagamento."""
+        self.assertIsNone(extract_payment_id({"collection_id": "null"}, {}))
+
+    def test_data_id_tem_prioridade(self):
+        self.assertEqual(
+            extract_payment_id({"data.id": "999", "payment_id": "123"}, {}),
+            "999",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Valor e moeda do pagamento (P9)
+# ---------------------------------------------------------------------------
+
+
+class ValorDoPagamentoTest(TestCase):
+    """
+    Qualquer pagamento aprovado na conta com `metadata.plan_key` liberava o
+    plano correspondente, sem conferir valor. O plano oculto
+    `premium_plus_test` custa R$ 5,00 e usa o mesmo caminho do
+    `premium_plus_annual`, de R$ 1.800,00.
+    """
+
+    def setUp(self):
+        self.user = create_user()
+        self.profile = self.user.profile
+
+    def _payload_premium_plus(self, amount):
+        payload = _payment_payload(self.user, payment_id="pay_pp", amount=amount)
+        payload["metadata"]["plan"] = "premium_plus"
+        payload["metadata"]["plan_key"] = "premium_plus_annual"
+        return payload
+
+    def test_valor_menor_nao_libera_plano(self):
+        resultado = apply_payment_event(self._payload_premium_plus(5.00))
+
+        self.assertEqual(resultado, plans.IGNORED_VALOR_INVALIDO)
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.plan, "free")
+
+    def test_valor_correto_libera(self):
+        resultado = apply_payment_event(self._payload_premium_plus(1800.00))
+        self.assertEqual(resultado, plans.APPLIED)
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.plan, "premium_plus")
+
+    def test_tolera_diferenca_de_centavo(self):
+        """Arredondamento na conversão para float do payload do MP."""
+        resultado = apply_payment_event(self._payload_premium_plus(1799.995))
+        self.assertEqual(resultado, plans.APPLIED)
+
+    def test_moeda_diferente_nao_libera(self):
+        payload = self._payload_premium_plus(1800.00)
+        payload["currency_id"] = "USD"
+        resultado = apply_payment_event(payload)
+        self.assertEqual(resultado, plans.IGNORED_VALOR_INVALIDO)
+
+    def test_plano_desconhecido_nao_libera(self):
+        payload = _payment_payload(self.user, payment_id="pay_x")
+        payload["metadata"]["plan_key"] = "plano_que_nao_existe"
+        resultado = apply_payment_event(payload)
+        self.assertEqual(resultado, plans.IGNORED_VALOR_INVALIDO)
+
+
+# ---------------------------------------------------------------------------
+# Validade da assinatura espelha o calendário de cobrança do MP (P10)
+# ---------------------------------------------------------------------------
+
+
+@override_settings(MERCADOPAGO_GRACE_DAYS=3)
+class ValidadeDeAssinaturaTest(TestCase):
+    """
+    Numa assinatura mensal, o evento `authorized` somava 30 dias E o primeiro
+    `payment approved` somava outros 30 — **60 dias por uma única cobrança**. A
+    idempotência não pega esse caso: são dois eventos distintos, cada um
+    legítimo uma vez.
+
+    Somar também produzia deriva: meses de 31 dias faziam a validade vencer
+    antes da cobrança seguinte, e o assinante caía para FREE até o webhook
+    chegar.
+    """
+
+    def setUp(self):
+        self.user = create_user()
+        self.profile = self.user.profile
+
+    def _preapproval(self, proxima_cobranca, status="authorized"):
+        payload = _preapproval_payload(self.user, status=status)
+        payload["next_payment_date"] = proxima_cobranca.isoformat()
+        return payload
+
+    def test_authorized_usa_a_proxima_cobranca_e_nao_um_ciclo_inteiro(self):
+        """Com trial de 7 dias, liberar 30 na autorização era dar 23 de graça."""
+        fim_do_trial = timezone.now() + timedelta(days=7)
+
+        apply_preapproval_event(self._preapproval(fim_do_trial))
+
+        self.profile.refresh_from_db()
+        esperado = fim_do_trial + timedelta(days=3)
+        self.assertAlmostEqual(
+            self.profile.plan_expires_at.timestamp(), esperado.timestamp(), delta=5
+        )
+
+    def test_autorizacao_mais_pagamento_nao_dobram_o_periodo(self):
+        """O cenário que dava 60 dias por uma cobrança."""
+        primeira_cobranca = timezone.now() + timedelta(days=30)
+        apply_preapproval_event(self._preapproval(primeira_cobranca))
+
+        agora = timezone.now()
+        pagamento = _payment_payload(self.user, payment_id="pay_ciclo1")
+        pagamento["date_approved"] = agora.isoformat()
+        apply_payment_event(pagamento)
+
+        self.profile.refresh_from_db()
+        dias = (self.profile.plan_expires_at - agora).days
+        self.assertLessEqual(dias, 34, "concedeu mais de um ciclo + carência")
+        self.assertGreaterEqual(dias, 30)
+
+    def test_renovacao_ancora_na_data_do_pagamento(self):
+        """Sem deriva: cada ciclo recalcula a partir da cobrança real."""
+        agora = timezone.now()
+        pagamento = _payment_payload(self.user, payment_id="pay_1")
+        pagamento["date_approved"] = agora.isoformat()
+        apply_payment_event(pagamento)
+
+        self.profile.refresh_from_db()
+        primeira = self.profile.plan_expires_at
+
+        proximo_mes = agora + timedelta(days=31)
+        pagamento2 = _payment_payload(self.user, payment_id="pay_2")
+        pagamento2["date_approved"] = proximo_mes.isoformat()
+        apply_payment_event(pagamento2)
+
+        self.profile.refresh_from_db()
+        esperado = proximo_mes + timedelta(days=33)
+        self.assertAlmostEqual(
+            self.profile.plan_expires_at.timestamp(), esperado.timestamp(), delta=5
+        )
+        self.assertGreater(self.profile.plan_expires_at, primeira)
+
+    def test_validade_nunca_encurta(self):
+        """Ajuste manual do suporte não pode ser desfeito pelo próximo evento."""
+        self.profile.plan = "basic"
+        self.profile.plan_expires_at = timezone.now() + timedelta(days=365)
+        self.profile.save()
+
+        pagamento = _payment_payload(self.user, payment_id="pay_curto")
+        pagamento["date_approved"] = timezone.now().isoformat()
+        apply_payment_event(pagamento)
+
+        self.profile.refresh_from_db()
+        self.assertGreater(self.profile.plan_expires_at, timezone.now() + timedelta(days=300))
+
+    def test_compra_avulsa_continua_somando(self):
+        """One-time não é assinatura: duas compras devem somar período."""
+        payload1 = _payment_payload(
+            self.user, payment_id="pay_a1", plan_key="premium_annual", amount=589.50
+        )
+        payload1["metadata"]["plan"] = "premium"
+        apply_payment_event(payload1)
+        self.profile.refresh_from_db()
+        primeira = self.profile.plan_expires_at
+
+        payload2 = _payment_payload(
+            self.user, payment_id="pay_a2", plan_key="premium_annual", amount=589.50
+        )
+        payload2["metadata"]["plan"] = "premium"
+        apply_payment_event(payload2)
+
+        self.profile.refresh_from_db()
+        self.assertGreater(self.profile.plan_expires_at, primeira + timedelta(days=300))
+
+    def test_guarda_a_proxima_cobranca_na_assinatura(self):
+        """O suporte precisa conferir a validade contra o calendário real."""
+        proxima = timezone.now() + timedelta(days=30)
+        apply_preapproval_event(self._preapproval(proxima))
+
+        assinatura = Subscription.objects.get(mp_preapproval_id="pre_1")
+        self.assertIsNotNone(assinatura.next_payment_date)
+        self.assertAlmostEqual(
+            assinatura.next_payment_date.timestamp(), proxima.timestamp(), delta=5
+        )
+
+    def test_sem_proxima_cobranca_cai_no_modo_aditivo(self):
+        """Se o MP não mandar a data, não podemos ficar sem liberar o plano."""
+        payload = _preapproval_payload(self.user)
+        payload.pop("next_payment_date", None)
+
+        apply_preapproval_event(payload)
+
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.plan, "basic")
+        self.assertIsNotNone(self.profile.plan_expires_at)
+
+
+# ---------------------------------------------------------------------------
+# Link de checkout e reconciliação (P15, P12)
+# ---------------------------------------------------------------------------
+
+
+class LinkDeCheckoutTest(TestCase):
+    """
+    `redirect(init_point)` com None levantava exceção quando o MP respondia 201
+    sem o campo. E em sandbox o campo é `sandbox_init_point`: usar `init_point`
+    mandava o usuário para o checkout de produção.
+    """
+
+    @override_settings(MERCADOPAGO_USE_SANDBOX=False)
+    def test_producao_usa_init_point(self):
+        recurso = {"init_point": "https://mp/prod", "sandbox_init_point": "https://mp/sandbox"}
+        self.assertEqual(_link_de_checkout(recurso), "https://mp/prod")
+
+    @override_settings(MERCADOPAGO_USE_SANDBOX=True)
+    def test_sandbox_prefere_sandbox_init_point(self):
+        recurso = {"init_point": "https://mp/prod", "sandbox_init_point": "https://mp/sandbox"}
+        self.assertEqual(_link_de_checkout(recurso), "https://mp/sandbox")
+
+    @override_settings(MERCADOPAGO_USE_SANDBOX=True)
+    def test_sandbox_sem_campo_proprio_cai_no_init_point(self):
+        self.assertEqual(_link_de_checkout({"init_point": "https://mp/prod"}), "https://mp/prod")
+
+    def test_recurso_sem_link_devolve_none(self):
+        self.assertIsNone(_link_de_checkout({}))
+
+
+class ExternalReferenceTest(TestCase):
+    """
+    O `external_reference` usava timestamp em segundos: dois cliques no mesmo
+    segundo geravam a mesma referência e o webhook casava com a assinatura
+    errada.
+    """
+
+    @patch("payments.views.create_preapproval")
+    @patch("payments.views.settings")
+    def test_duas_assinaturas_seguidas_tem_referencias_distintas(self, mock_settings, mock_create):
+        mock_create.return_value = {"id": "pre_x", "init_point": "https://mp/x"}
+        mock_settings.MERCADOPAGO_BACK_URL = "https://exemplo.com/retorno"
+        mock_settings.MERCADOPAGO_WEBHOOK_URL = "https://exemplo.com/webhook"
+        mock_settings.MERCADOPAGO_ACCESS_TOKEN = "token"
+        mock_settings.MERCADOPAGO_USE_SANDBOX = False
+        mock_settings.MERCADOPAGO_TEST_PAYER_EMAIL = ""
+        mock_settings.MERCADOPAGO_CURRENCY = "BRL"
+        mock_settings.MERCADOPAGO_TRIAL_DAYS = 0
+        mock_settings.MERCADOPAGO_PLANS = {
+            "basic_monthly": {
+                "plan": "basic",
+                "label": "Basic Mensal",
+                "amount": Decimal("79.90"),
+                "frequency": 1,
+                "frequency_type": "months",
+                "billing_type": "subscription",
+            }
+        }
+
+        user = create_user()
+        self.client.force_login(user)
+        url = reverse("payments:checkout", kwargs={"plan": "basic_monthly"})
+        self.client.post(url)
+        self.client.post(url)
+
+        referencias = set(Subscription.objects.values_list("external_reference", flat=True))
+        self.assertEqual(len(referencias), 2, "duas assinaturas com a mesma referência")
+
+
+class ReconcileMercadoPagoTest(TestCase):
+    """
+    Rede de segurança para eventos que o webhook perdeu. Reprocessar é seguro
+    porque tudo passa pelo serviço idempotente.
+    """
+
+    def setUp(self):
+        self.user = create_user()
+        self.assinatura = Subscription.objects.create(
+            user=self.user,
+            plan="basic",
+            plan_key="basic_monthly",
+            amount=Decimal("79.90"),
+            status=SubscriptionStatus.PENDING,
+            mp_preapproval_id="pre_recon",
+        )
+
+    @patch("payments.management.commands.reconcile_mercadopago.fetch_preapproval")
+    def test_dry_run_apenas_relata(self, mock_fetch):
+        mock_fetch.return_value = _preapproval_payload(
+            self.user, preapproval_id="pre_recon", status="authorized"
+        )
+        saida = StringIO()
+        call_command("reconcile_mercadopago", "--dry-run", stdout=saida)
+
+        self.assertIn("Simulação", saida.getvalue())
+        self.assinatura.refresh_from_db()
+        self.assertEqual(self.assinatura.status, SubscriptionStatus.PENDING)
+
+    @patch("payments.management.commands.reconcile_mercadopago.fetch_preapproval")
+    def test_corrige_divergencia(self, mock_fetch):
+        mock_fetch.return_value = _preapproval_payload(
+            self.user, preapproval_id="pre_recon", status="authorized"
+        )
+        saida = StringIO()
+        call_command("reconcile_mercadopago", stdout=saida)
+
+        self.assinatura.refresh_from_db()
+        self.assertEqual(self.assinatura.status, "authorized")
+        self.user.profile.refresh_from_db()
+        self.assertEqual(self.user.profile.plan, "basic")
+
+    @patch("payments.management.commands.reconcile_mercadopago.fetch_preapproval")
+    def test_sem_divergencia_nao_altera(self, mock_fetch):
+        self.assinatura.status = "authorized"
+        self.assinatura.save()
+        mock_fetch.return_value = _preapproval_payload(
+            self.user, preapproval_id="pre_recon", status="authorized"
+        )
+        saida = StringIO()
+        call_command("reconcile_mercadopago", stdout=saida)
+        self.assertIn("Nenhuma divergência", saida.getvalue())
+
+    @patch("payments.management.commands.reconcile_mercadopago.fetch_preapproval")
+    def test_falha_de_consulta_nao_interrompe(self, mock_fetch):
+        """Uma assinatura problemática não pode abortar a varredura inteira."""
+        mock_fetch.side_effect = Exception("MP fora do ar")
+        saida = StringIO()
+        call_command("reconcile_mercadopago", stdout=saida)
+        self.assertIn("Falhas de consulta", saida.getvalue())

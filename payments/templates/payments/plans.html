@@ -8,7 +8,7 @@
 
   <div style="margin-top:10px;color:#cbd5e1;font-size:14px;">
     {% if profile %}
-      Plano atual: <strong>{{ profile.get_plan_display }}</strong>
+      Plano atual: <strong>{{ profile.get_active_plan_display }}</strong>
       {% if profile.plan_expires_at %}
         (expira em {{ profile.plan_expires_at|date:"d/m/Y H:i" }})
       {% endif %}
@@ -42,7 +42,10 @@
         <li>Registro de operações.</li>
         <li>Acesso ao Dashboard.</li>
       </ul>
-      <a class="btn btn-primary" href="{% url 'payments:checkout' 'basic_monthly' %}" style="margin-top:auto;">Assinar Basic Mensal</a>
+      <form method="post" action="{% url 'payments:checkout' 'basic_monthly' %}" style="margin-top:auto;">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary" style="width:100%;">Assinar Basic Mensal</button>
+      </form>
     </div>
 
     <div style="background:#0b1220;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;position:relative;overflow:hidden;display:flex;flex-direction:column;" data-billing="annual">
@@ -63,7 +66,10 @@
         <li>Registro de operações.</li>
         <li>Acesso ao Dashboard.</li>
       </ul>
-      <a class="btn btn-primary" href="{% url 'payments:checkout' 'basic_annual' %}" style="margin-top:auto;">Assinar Basic Anual</a>
+      <form method="post" action="{% url 'payments:checkout' 'basic_annual' %}" style="margin-top:auto;">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary" style="width:100%;">Assinar Basic Anual</button>
+      </form>
     </div>
 
     <div style="background:#0b1220;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;display:flex;flex-direction:column;" data-billing="monthly">
@@ -82,7 +88,10 @@
         <li>Acesso ao Dashboard Avançado.</li>
         <li><span style="color:#22d3ee;">Analytics com IA</span></li>
       </ul>
-      <a class="btn btn-primary" href="{% url 'payments:checkout' 'premium_monthly' %}" style="margin-top:auto;">Assinar Premium Mensal</a>
+      <form method="post" action="{% url 'payments:checkout' 'premium_monthly' %}" style="margin-top:auto;">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary" style="width:100%;">Assinar Premium Mensal</button>
+      </form>
     </div>
 
     <div style="background:#0b1220;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;position:relative;overflow:hidden;display:flex;flex-direction:column;" data-billing="annual">
@@ -104,7 +113,10 @@
         <li>Acesso ao Dashboard Avançado.</li>
         <li><span style="color:#22d3ee;">Analytics com IA</span></li>
       </ul>
-      <a class="btn btn-primary" href="{% url 'payments:checkout' 'premium_annual' %}" style="margin-top:auto;">Assinar Premium Anual</a>
+      <form method="post" action="{% url 'payments:checkout' 'premium_annual' %}" style="margin-top:auto;">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary" style="width:100%;">Assinar Premium Anual</button>
+      </form>
     </div>
   </div>
 
@@ -137,7 +149,10 @@
         <li>Acesso ao Dashboard Avançado.</li>
         <li><span style="color:#22d3ee;">Analytics com IA</span></li>
       </ul>
-      <a class="btn btn-primary" href="{% url 'payments:checkout' 'premium_plus_monthly' %}" style="margin-top:auto;">Assinar Premium Plus Mensal</a>
+      <form method="post" action="{% url 'payments:checkout' 'premium_plus_monthly' %}" style="margin-top:auto;">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary" style="width:100%;">Assinar Premium Plus Mensal</button>
+      </form>
     </div>
 
     <div style="background:#0b1220;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;display:flex;flex-direction:column;position:relative;overflow:hidden;">
@@ -160,7 +175,10 @@
         <li>Acesso ao Dashboard Avançado.</li>
         <li><span style="color:#22d3ee;">Analytics com IA</span></li>
       </ul>
-      <a class="btn btn-primary" href="{% url 'payments:checkout' 'premium_plus_quarterly' %}" style="margin-top:auto;">Assinar Premium Plus Trimestral</a>
+      <form method="post" action="{% url 'payments:checkout' 'premium_plus_quarterly' %}" style="margin-top:auto;">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary" style="width:100%;">Assinar Premium Plus Trimestral</button>
+      </form>
     </div>
 
     <div style="background:#0b1220;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;display:flex;flex-direction:column;position:relative;overflow:hidden;">
@@ -183,7 +201,10 @@
         <li>Acesso ao Dashboard Avançado.</li>
         <li><span style="color:#22d3ee;">Analytics com IA</span></li>
       </ul>
-      <a class="btn btn-primary" href="{% url 'payments:checkout' 'premium_plus_semiannual' %}" style="margin-top:auto;">Assinar Premium Plus Semestral</a>
+      <form method="post" action="{% url 'payments:checkout' 'premium_plus_semiannual' %}" style="margin-top:auto;">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary" style="width:100%;">Assinar Premium Plus Semestral</button>
+      </form>
     </div>
 
     <div style="background:#0b1220;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;display:flex;flex-direction:column;position:relative;overflow:hidden;">
@@ -206,7 +227,10 @@
         <li>Acesso ao Dashboard Avançado.</li>
         <li><span style="color:#22d3ee;">Analytics com IA</span></li>
       </ul>
-      <a class="btn btn-primary" href="{% url 'payments:checkout' 'premium_plus_annual' %}" style="margin-top:auto;">Assinar Premium Plus Anual</a>
+      <form method="post" action="{% url 'payments:checkout' 'premium_plus_annual' %}" style="margin-top:auto;">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary" style="width:100%;">Assinar Premium Plus Anual</button>
+      </form>
     </div>
   </div>
 
