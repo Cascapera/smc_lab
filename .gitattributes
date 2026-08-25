@@ -1,0 +1,3 @@
+# Scripts de shell devem manter LF mesmo em checkout Windows:
+# com CRLF o bash do servidor Linux quebra ("$: command not found").
+*.sh text eol=lf
