@@ -1,47 +1,99 @@
+# =============================================================================
+# Stack de produção. O nginx do host faz proxy para 127.0.0.1:8000.
+# =============================================================================
+
+# Rotação de log dos containers. Sem isto, o driver json-file cresce sem limite
+# (access log + `celery -l info` a cada 5 min) até encher o disco, e o Postgres
+# para de aceitar escrita quando isso acontece.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+# `trader_portal/__init__.py` fixa `settings.dev` como default (o Celery importa
+# o pacote antes de qualquer coisa), e o `setdefault` do wsgi.py roda depois,
+# virando no-op. Resultado: web, worker e beat rodavam com settings de DEV em
+# produção — sem HSTS, sem SSL redirect, com o logging de dev e sem as
+# validações de ImproperlyConfigured. Definir aqui é explícito e vale para os
+# três serviços, inclusive para `docker compose exec ... manage.py migrate`.
+x-django-env: &django-env
+  DJANGO_SETTINGS_MODULE: trader_portal.settings.prod
+
 services:
   web:
     build: .
     restart: unless-stopped
-    command: gunicorn trader_portal.wsgi:application --bind 0.0.0.0:8000
+    # Sem `command`: usa o CMD do Dockerfile, que carrega o gunicorn.conf.py
+    # (timeout, número de workers, access log com tempo de resposta). Com o
+    # command antigo o gunicorn subia com os defaults: 1 worker e timeout de 30s.
     ports:
-      - "8000:8000"
+      # Só o nginx do host acessa. Antes era "8000:8000", que publicava a
+      # aplicação em HTTP puro na internet, contornando o nginx e o TLS.
+      - "127.0.0.1:8000:8000"
+    environment: *django-env
     volumes:
       - media_data:/app/media
       - ./logs:/app/logs
     env_file: .env
     depends_on:
-      - postgres
-      - redis
+      # Espera o banco e o Redis responderem, não só existirem. Com o cache
+      # agora no Redis (rate limit de login), subir antes dele deixaria uma
+      # janela de erro no login logo após o deploy.
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    logging: *default-logging
 
   worker:
     build: .
     restart: unless-stopped
     command: celery -A trader_portal worker -l info --pool=solo --concurrency=1
+    environment: *django-env
     env_file: .env
     volumes:
       - ./logs:/app/logs
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     # Tempo para o worker terminar a tarefa em andamento antes do SIGKILL (coleta pode levar minutos)
     stop_grace_period: 5m
+    logging: *default-logging
 
   beat:
     build: .
     restart: unless-stopped
     command: celery -A trader_portal beat -l info
+    environment: *django-env
     env_file: .env
     volumes:
       - ./logs:/app/logs
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    logging: *default-logging
 
   redis:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      # Apenas local. O firewall do Lightsail já bloqueia estas portas de fora,
+      # mas o Docker ignora o ufw: se a regra mudar, um Redis sem senha exposto
+      # permite `CONFIG SET dir` e vira execução de código no host.
+      # Para acessar de fora, use túnel SSH: ssh -L 6379:localhost:6379 ...
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    logging: *default-logging
 
   postgres:
     image: postgres:16-alpine
@@ -53,7 +105,15 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      # Idem: só local. Acesso externo por túnel SSH.
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-trader_user} -d $${POSTGRES_DB:-trader_portal}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    logging: *default-logging
 
 volumes:
   postgres_data:
