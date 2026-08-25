@@ -24,14 +24,18 @@ DATABASES["default"]["ATOMIC_REQUESTS"] = True
 CSRF_TRUSTED_ORIGINS = env.list("DJANGO_CSRF_TRUSTED_ORIGINS", default=[])
 
 # WhiteNoise com manifest: comprime e adiciona hash ao nome do arquivo, para o
-# browser buscar o arquivo novo depois de cada deploy. Exige `collectstatic`,
-# que o Dockerfile e o passo de deploy já executam.
+# browser buscar o arquivo novo depois de cada deploy. O manifest e gerado no
+# build da imagem (o Dockerfile falha se ele nao sair).
+#
+# Usamos a subclasse resiliente, e nao a do whitenoise direto: com
+# `manifest_strict = True` (o padrao), uma entrada ausente levanta ValueError e
+# derruba a pagina inteira. Ja aconteceu: o site ficou 500 por completo.
 STORAGES = {
     "default": {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
     },
     "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        "BACKEND": "trader_portal.storage.ResilientManifestStaticFilesStorage",
     },
 }
 

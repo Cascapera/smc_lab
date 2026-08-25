@@ -67,3 +67,52 @@ class ResilientRedisCacheTest(SimpleTestCase):
         self.assertTrue(self.cache.add(chave, 1, 60))
         self.assertEqual(self.cache.incr(chave), 1)
         self.assertIsNone(self.cache.get(chave))
+
+
+# ---------------------------------------------------------------------------
+# Storage de estáticos resiliente
+# ---------------------------------------------------------------------------
+
+
+class ResilientManifestStorageTest(SimpleTestCase):
+    """
+    Regressão do incidente: ligar o storage de manifest tirou o site do ar.
+
+    A imagem Docker saía sem `staticfiles.json` (o collectstatic do Dockerfile
+    rodava com settings de dev), o container subia com settings de produção, o
+    storage carregava zero entradas e todo `{% static %}` levantava ValueError —
+    500 em todas as páginas.
+    """
+
+    def _storage(self):
+        from trader_portal.storage import ResilientManifestStaticFilesStorage
+
+        return ResilientManifestStaticFilesStorage()
+
+    def test_manifest_nao_e_estrito(self):
+        """`manifest_strict=True` é o que transforma entrada ausente em 500."""
+        self.assertFalse(self._storage().manifest_strict)
+
+    def test_manifest_vazio_nao_levanta(self):
+        """Cenário exato do incidente: processo subiu sem manifest."""
+        storage = self._storage()
+        storage.hashed_files = {}
+        try:
+            resultado = storage.stored_name("image/logo.png")
+        except Exception as exc:  # pragma: no cover
+            self.fail(f"stored_name levantou {type(exc).__name__}: {exc}")
+        self.assertTrue(resultado)
+
+    def test_arquivo_inexistente_devolve_o_caminho_original(self):
+        """Pior caso: nem o arquivo existe. Ainda assim a página deve renderizar."""
+        storage = self._storage()
+        storage.hashed_files = {}
+        self.assertEqual(
+            storage.stored_name("nao/existe/em/lugar/nenhum.css"),
+            "nao/existe/em/lugar/nenhum.css",
+        )
+
+    def test_usa_o_manifest_quando_ele_existe(self):
+        storage = self._storage()
+        storage.hashed_files = {"image/logo.png": "image/logo.abc123.png"}
+        self.assertEqual(storage.stored_name("image/logo.png"), "image/logo.abc123.png")
