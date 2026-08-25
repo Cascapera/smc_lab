@@ -55,3 +55,8 @@ painel_smc/SMCTrend.exe
 celerybeat-schedule
 celerybeat-schedule-shm
 celerybeat-schedule-wal
+# Documentos locais de analise (nao versionar)
+localdocs/
+
+# Backups gerados pelo scripts/backup_db.sh (nunca versionar)
+backups/

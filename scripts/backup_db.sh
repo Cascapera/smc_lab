@@ -1,22 +1,37 @@
 #!/usr/bin/env bash
+# =============================================================================
+# Backup do banco (PostgreSQL) e da pasta media.
+#
+# Roda antes de todo deploy e antes de todo rollback. Se o backup do banco
+# falhar, o script sai com erro e interrompe o deploy — é de propósito: não
+# subimos versão nova sem ponto de retorno. Para forçar, use ALLOW_NO_BACKUP=1.
+#
+# Importante: este script NÃO faz `source .env`. O .env contém valores com
+# parênteses, cifrões e aspas (ex.: SECRET_KEY) que o bash interpretaria,
+# quebrando o deploy inteiro. As credenciais do Postgres são lidas de dentro
+# do próprio container, que já as recebe via docker compose.
+# =============================================================================
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+ENV_FILE="$PROJECT_DIR/.env"
 
-# Load env vars if present
-if [ -f "$PROJECT_DIR/.env" ]; then
-  set -a
-  # shellcheck source=/dev/null
-  . "$PROJECT_DIR/.env"
-  set +a
-fi
+# Lê UMA chave do .env sem interpretar o conteúdo (seguro para qualquer valor).
+env_get() {
+  [ -f "$ENV_FILE" ] || return 0
+  grep -E "^[[:space:]]*$1=" "$ENV_FILE" 2>/dev/null | tail -n 1 | cut -d= -f2- \
+    | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+          -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
+}
 
+BACKUP_DIR="${BACKUP_DIR:-$(env_get BACKUP_DIR)}"
 BACKUP_DIR="${BACKUP_DIR:-$PROJECT_DIR/backups}"
+KEEP_BACKUPS="${KEEP_BACKUPS:-$(env_get KEEP_BACKUPS)}"
 KEEP_BACKUPS="${KEEP_BACKUPS:-8}"
-POSTGRES_DB="${POSTGRES_DB:-trader_portal}"
-POSTGRES_USER="${POSTGRES_USER:-trader_user}"
-BACKUP_MEDIA="${BACKUP_MEDIA:-1}"  # 1 = backup media (imagens), 0 = só banco
+BACKUP_MEDIA="${BACKUP_MEDIA:-$(env_get BACKUP_MEDIA)}"
+BACKUP_MEDIA="${BACKUP_MEDIA:-1}"   # 1 = backup media (imagens), 0 = só banco
+ALLOW_NO_BACKUP="${ALLOW_NO_BACKUP:-0}"
 
 mkdir -p "$BACKUP_DIR"
 
@@ -25,21 +40,49 @@ backup_file="$BACKUP_DIR/backup_${timestamp}.sql"
 
 cd "$PROJECT_DIR"
 
+# -----------------------------------------------------------------------------
 # 1. Backup do banco PostgreSQL
-docker compose exec -T postgres pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" > "$backup_file"
-echo "Backup DB saved: $backup_file"
-
-# 2. Backup da pasta media (imagens/screenshots dos trades)
-if [ "$BACKUP_MEDIA" = "1" ]; then
-  media_file="$BACKUP_DIR/media_${timestamp}.tar.gz"
-  docker compose run --rm -v "$BACKUP_DIR:/backup" web tar czf "/backup/media_${timestamp}.tar.gz" -C /app media 2>/dev/null || true
-  if [ -f "$media_file" ]; then
-    echo "Backup media saved: $media_file"
-  else
-    echo "AVISO: Backup media falhou (container web pode estar parado)"
+#    POSTGRES_USER/POSTGRES_DB vêm do ambiente do container (docker compose),
+#    então não dependemos de parsear o .env aqui.
+# -----------------------------------------------------------------------------
+backup_ok=0
+if docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
+     > "$backup_file" 2>/tmp/backup_db_err.log; then
+  if [ -s "$backup_file" ]; then
+    backup_ok=1
+    echo "Backup DB salvo: $backup_file ($(du -h "$backup_file" | cut -f1))"
   fi
 fi
 
-# Manter apenas os backups mais recentes
+if [ "$backup_ok" != "1" ]; then
+  echo "ERRO: backup do banco falhou ou saiu vazio." >&2
+  [ -f /tmp/backup_db_err.log ] && sed 's/^/  pg_dump: /' /tmp/backup_db_err.log >&2
+  rm -f "$backup_file"
+  if [ "$ALLOW_NO_BACKUP" = "1" ]; then
+    echo "AVISO: ALLOW_NO_BACKUP=1, seguindo sem backup." >&2
+  else
+    echo "Deploy interrompido: não há ponto de retorno." >&2
+    echo "Se for intencional (ex.: banco fora do ar), rode com ALLOW_NO_BACKUP=1." >&2
+    exit 1
+  fi
+fi
+
+# -----------------------------------------------------------------------------
+# 2. Backup da pasta media (imagens/screenshots dos trades)
+# -----------------------------------------------------------------------------
+if [ "$BACKUP_MEDIA" = "1" ]; then
+  media_file="$BACKUP_DIR/media_${timestamp}.tar.gz"
+  docker compose run --rm -v "$BACKUP_DIR:/backup" web \
+    tar czf "/backup/media_${timestamp}.tar.gz" -C /app media 2>/dev/null || true
+  if [ -f "$media_file" ]; then
+    echo "Backup media salvo: $media_file"
+  else
+    echo "AVISO: backup de media falhou (container web pode estar parado)"
+  fi
+fi
+
+# -----------------------------------------------------------------------------
+# 3. Retenção: mantém apenas os N backups mais recentes
+# -----------------------------------------------------------------------------
 ls -1t "$BACKUP_DIR"/backup_*.sql 2>/dev/null | tail -n +"$((KEEP_BACKUPS + 1))" | xargs -r rm --
 ls -1t "$BACKUP_DIR"/media_*.tar.gz 2>/dev/null | tail -n +"$((KEEP_BACKUPS + 1))" | xargs -r rm --

@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from django import forms
 from django.contrib.auth.forms import (
+    AdminUserCreationForm as DjangoAdminUserCreationForm,
+)
+from django.contrib.auth.forms import (
     AuthenticationForm,
     UserChangeForm,
     UserCreationForm,
@@ -23,6 +26,24 @@ class CustomUserCreationForm(UserCreationForm):
     class Meta(UserCreationForm.Meta):
         model = User
         fields = ("username", "email", "first_name", "last_name")
+
+
+class AdminUserCreationForm(DjangoAdminUserCreationForm):
+    """
+    Criação de usuário pelo admin.
+
+    Precisa herdar de `AdminUserCreationForm` (e não de `UserCreationForm`) porque
+    o `add_fieldsets` padrão do Django 5.1+ inclui o campo `usable_password`, que
+    só existe nesta classe. Com o form errado, `/admin/accounts/user/add/` quebrava
+    com `FieldError: Unknown field(s) (usable_password)`.
+
+    Não reaproveitamos o `CustomUserCreationForm` porque ele é a base do formulário
+    público de cadastro (`UserRegistrationForm`), que não deve ganhar esse campo.
+    """
+
+    class Meta(DjangoAdminUserCreationForm.Meta):
+        model = User
+        fields = ("username", "email")
 
 
 class CustomUserChangeForm(UserChangeForm):

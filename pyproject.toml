@@ -32,6 +32,7 @@ ignore = [
 # Django settings usam from .base import *; env, BASE_DIR, etc. vêm do base
 "trader_portal/settings/dev.py" = ["F405"]
 "trader_portal/settings/prod.py" = ["F405"]
+"trader_portal/settings/ci_postgres.py" = ["F405"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["accounts", "trades", "macro", "payments", "discord_integration", "trader_portal"]

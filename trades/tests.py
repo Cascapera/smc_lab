@@ -2,6 +2,7 @@
 Testes do app trades - CRUD, analytics, forms, views e llm_service.
 """
 
+from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -26,6 +27,7 @@ from .forms import TradeForm
 from .llm_service import AnalyticsLLMError, run_analytics_llm, run_global_analytics_llm
 from .models import (
     AIAnalyticsRun,
+    AIRunStatus,
     Direction,
     EntryType,
     GlobalAIAnalyticsRun,
@@ -586,7 +588,13 @@ class AnalyticsIAViewErrorHandlingTest(TestCase):
         create_trade(self.user)
 
     @patch("trades.llm_service.run_analytics_llm")
-    def test_exibe_mensagem_amigavel_quando_llm_falha(self, mock_run):
+    def test_falha_da_llm_marca_execucao_como_failed(self, mock_run):
+        """
+        Antes, o texto de erro era gravado em `result`. Como o limite semanal
+        olhava "tem texto em result", uma indisponibilidade da OpenAI queimava a
+        analise da semana do assinante - e o erro ainda aparecia na tela como
+        "Resumo final".
+        """
         mock_run.side_effect = AnalyticsLLMError("Erro na API")
         self.client.force_login(self.user)
         response = self.client.post(reverse("trades:analytics_ia"))
@@ -594,7 +602,59 @@ class AnalyticsIAViewErrorHandlingTest(TestCase):
         self.assertIn("requested=1", response.url)
         run = AIAnalyticsRun.objects.filter(user=self.user).order_by("-requested_at").first()
         self.assertIsNotNone(run)
-        self.assertIn("Erro na geração do relatório", run.result)
+        self.assertEqual(run.status, AIRunStatus.FAILED)
+        self.assertEqual(run.result, "")
+        self.assertIn("Erro na API", run.error_detail)
+
+    @patch("trades.llm_service.run_analytics_llm")
+    def test_falha_nao_aparece_como_resumo_na_tela(self, mock_run):
+        mock_run.side_effect = AnalyticsLLMError("Erro na API")
+        self.client.force_login(self.user)
+        self.client.post(reverse("trades:analytics_ia"))
+        response = self.client.get(reverse("trades:analytics_ia"))
+        self.assertIsNone(response.context["ai_last_run"])
+
+    @patch("trades.llm_service.run_analytics_llm")
+    def test_falha_nao_consome_a_analise_da_semana(self, mock_run):
+        """O assinante nao pode ficar 7 dias bloqueado por um erro nosso."""
+        mock_run.side_effect = AnalyticsLLMError("Erro na API")
+        self.client.force_login(self.user)
+        self.client.post(reverse("trades:analytics_ia"))
+
+        run = AIAnalyticsRun.objects.filter(user=self.user).first()
+        # Passado o cooldown curto de protecao, pode pedir de novo.
+        run.requested_at = timezone.now() - timedelta(hours=1)
+        run.save(update_fields=["requested_at"])
+
+        response = self.client.get(reverse("trades:analytics_ia"))
+        self.assertTrue(response.context["ai_can_request"])
+
+    @patch("trades.llm_service.run_analytics_llm")
+    def test_cooldown_curto_evita_martelar_a_openai(self, mock_run):
+        mock_run.side_effect = AnalyticsLLMError("Erro na API")
+        self.client.force_login(self.user)
+        self.client.post(reverse("trades:analytics_ia"))
+
+        response = self.client.get(reverse("trades:analytics_ia"))
+        self.assertFalse(response.context["ai_can_request"])
+
+    @patch("trades.llm_service.run_analytics_llm")
+    def test_resposta_vazia_e_tratada_como_falha(self, mock_run):
+        """Sem OPENAI_API_KEY o servico devolve "" - isso nao e uma analise."""
+        mock_run.return_value = ""
+        self.client.force_login(self.user)
+        self.client.post(reverse("trades:analytics_ia"))
+        run = AIAnalyticsRun.objects.filter(user=self.user).first()
+        self.assertEqual(run.status, AIRunStatus.FAILED)
+
+    @patch("trades.llm_service.run_analytics_llm")
+    def test_sucesso_marca_execucao_como_success(self, mock_run):
+        mock_run.return_value = "Analise gerada pela IA."
+        self.client.force_login(self.user)
+        self.client.post(reverse("trades:analytics_ia"))
+        run = AIAnalyticsRun.objects.filter(user=self.user).first()
+        self.assertEqual(run.status, AIRunStatus.SUCCESS)
+        self.assertIn("Analise gerada pela IA.", run.result)
 
 
 class GlobalAnalyticsIAViewErrorHandlingTest(TestCase):
@@ -605,10 +665,95 @@ class GlobalAnalyticsIAViewErrorHandlingTest(TestCase):
         create_trade(self.staff_user)
 
     @patch("trades.llm_service.run_global_analytics_llm")
-    def test_exibe_mensagem_amigavel_quando_llm_falha(self, mock_run):
+    def test_falha_da_llm_marca_execucao_como_failed(self, mock_run):
         mock_run.side_effect = AnalyticsLLMError("Erro na API")
         self.client.force_login(self.staff_user)
         response = self.client.post(reverse("trades:analytics_ia_global"))
         self.assertEqual(response.status_code, 302)
         run = GlobalAIAnalyticsRun.objects.order_by("-requested_at").first()
-        self.assertIn("Erro na geração do relatório", run.result)
+        self.assertEqual(run.status, AIRunStatus.FAILED)
+        self.assertEqual(run.result, "")
+
+
+# ---------------------------------------------------------------------------
+# Open redirect (?next=)
+# ---------------------------------------------------------------------------
+
+
+class SafeNextUrlTest(TestCase):
+    """
+    Regressão: `next` vinha do usuário (query string, campo do form ou Referer)
+    e era usado direto no redirect, permitindo mandar o usuário para fora do
+    domínio depois de salvar/excluir um trade (open redirect → phishing).
+    """
+
+    def setUp(self):
+        self.user = create_user()
+        self.trade = create_trade(self.user, symbol="PETR4")
+        self.client.force_login(self.user)
+        self.dashboard = reverse("trades:dashboard")
+
+    def _edit_url(self, next_value):
+        base = reverse("trades:trade_edit", kwargs={"pk": self.trade.pk})
+        return f"{base}?next={next_value}"
+
+    def test_edicao_ignora_next_externo(self):
+        data = valid_trade_data(symbol="VALE3")
+        data["executed_at"] = self.trade.executed_at.strftime("%Y-%m-%dT%H:%M")
+        response = self.client.post(self._edit_url("https://evil.example/x"), data=data)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, self.dashboard)
+
+    def test_edicao_ignora_next_protocol_relative(self):
+        """//evil.example é interpretado pelo browser como outro host."""
+        data = valid_trade_data(symbol="VALE3")
+        data["executed_at"] = self.trade.executed_at.strftime("%Y-%m-%dT%H:%M")
+        response = self.client.post(self._edit_url("//evil.example/x"), data=data)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, self.dashboard)
+
+    def test_edicao_aceita_next_interno(self):
+        destino = reverse("trades:dashboard_advanced")
+        data = valid_trade_data(symbol="VALE3")
+        data["executed_at"] = self.trade.executed_at.strftime("%Y-%m-%dT%H:%M")
+        response = self.client.post(self._edit_url(destino), data=data)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, destino)
+
+    def test_delete_ignora_next_externo(self):
+        response = self.client.post(
+            reverse("trades:trade_delete", kwargs={"pk": self.trade.pk}),
+            data={"next": "https://evil.example/x"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, self.dashboard)
+
+    def test_delete_ignora_referer_externo(self):
+        response = self.client.post(
+            reverse("trades:trade_delete", kwargs={"pk": self.trade.pk}),
+            HTTP_REFERER="https://evil.example/x",
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, self.dashboard)
+
+    def test_delete_aceita_next_interno(self):
+        destino = reverse("trades:dashboard_advanced")
+        response = self.client.post(
+            reverse("trades:trade_delete", kwargs={"pk": self.trade.pk}),
+            data={"next": destino},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, destino)
+
+    def test_contexto_do_formulario_nao_propaga_next_externo(self):
+        """O template usa next_url como link 'voltar'; não pode apontar para fora."""
+        response = self.client.get(self._edit_url("https://evil.example/x"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["next_url"], self.dashboard)
+
+    def test_contexto_do_formulario_novo_ignora_referer_externo(self):
+        response = self.client.get(
+            reverse("trades:trade_add"), HTTP_REFERER="https://evil.example/x"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["next_url"], self.dashboard)

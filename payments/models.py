@@ -61,6 +61,17 @@ class Payment(models.Model):
             models.Index(fields=["mp_payment_id"]),
             models.Index(fields=["external_reference"]),
         ]
+        constraints = [
+            # Chave de idempotência: o Mercado Pago reenvia a mesma notificação
+            # várias vezes. Um pagamento só pode virar uma linha, para o plano ser
+            # aplicado uma vez só. Condicional porque `mp_payment_id` é opcional
+            # (pagamento ainda sem id do MP fica com string vazia).
+            models.UniqueConstraint(
+                fields=["mp_payment_id"],
+                condition=~models.Q(mp_payment_id=""),
+                name="uniq_payment_mp_payment_id",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.user} - {self.plan} - {self.status}"

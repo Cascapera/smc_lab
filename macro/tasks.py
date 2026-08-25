@@ -3,6 +3,7 @@ from time import perf_counter
 from typing import Optional
 
 from celery import shared_task
+from django.core.cache import cache
 from django.utils import timezone
 
 from macro.services import config
@@ -19,6 +20,16 @@ from trader_portal.observability import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Trava simples para nao rodar dois ciclos ao mesmo tempo. O timeout garante que
+# um worker morto no meio da coleta nao deixe a trava presa para sempre.
+#
+# Limitacao conhecida: o cache padrao e LocMemCache, que vive na memoria de cada
+# processo. Com `--pool=solo --concurrency=1` ha um unico processo executando
+# tarefas, entao a trava vale; quando o worker passar para prefork (Fase 3) ou
+# houver mais de um worker, e preciso mover o cache para Redis.
+CYCLE_LOCK_KEY = "macro:cycle_lock"
+CYCLE_LOCK_TIMEOUT_SECONDS = 1800  # 30 min
 
 
 @shared_task(
@@ -43,6 +54,7 @@ def collect_macro_cycle(self) -> None:
         return int((perf_counter() - t0) * 1000)
 
     cycle_timer: Optional[Timer] = None
+    lock_acquired = False
     try:
         if is_market_closed():
             log_event(
@@ -54,6 +66,19 @@ def collect_macro_cycle(self) -> None:
                 elapsed_ms=duration_ms(),
             )
             return
+
+        lock_acquired = cache.add(CYCLE_LOCK_KEY, "1", CYCLE_LOCK_TIMEOUT_SECONDS)
+        if not lock_acquired:
+            log_event(
+                logger,
+                event="macro_cycle_skipped",
+                message="Another cycle is still running",
+                reason="already_running",
+                status="skipped",
+                elapsed_ms=duration_ms(),
+            )
+            return
+
         measurement_time = align_measurement_time(
             timezone.now(), interval_minutes=config.TARGET_INTERVAL_MINUTES
         )
@@ -106,5 +131,7 @@ def collect_macro_cycle(self) -> None:
         # Após 3 falhas, para e espera o próximo agendamento do Beat
         raise
     finally:
+        if lock_acquired:
+            cache.delete(CYCLE_LOCK_KEY)
         reset_correlation_id(token_correlation)
         reset_task_id(token_task)
