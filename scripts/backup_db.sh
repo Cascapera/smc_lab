@@ -18,11 +18,19 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ENV_FILE="$PROJECT_DIR/.env"
 
 # Lê UMA chave do .env sem interpretar o conteúdo (seguro para qualquer valor).
+#
+# Nunca retorna erro: chave ausente devolve string vazia. Isso é essencial
+# porque o script roda com `set -euo pipefail` — uma versão anterior terminava
+# em `grep | tail | cut | sed` e, quando a chave não existia (BACKUP_DIR,
+# KEEP_BACKUPS e BACKUP_MEDIA normalmente não estão no .env), o grep retornava 1,
+# o pipefail propagava e o deploy inteiro abortava no primeiro passo.
 env_get() {
   [ -f "$ENV_FILE" ] || return 0
-  grep -E "^[[:space:]]*$1=" "$ENV_FILE" 2>/dev/null | tail -n 1 | cut -d= -f2- \
+  linha="$(grep -E "^[[:space:]]*$1=" "$ENV_FILE" 2>/dev/null | tail -n 1 || true)"
+  [ -n "$linha" ] || return 0
+  printf '%s' "${linha#*=}" \
     | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
-          -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
+          -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/" || true
 }
 
 BACKUP_DIR="${BACKUP_DIR:-$(env_get BACKUP_DIR)}"
@@ -56,7 +64,7 @@ fi
 
 if [ "$backup_ok" != "1" ]; then
   echo "ERRO: backup do banco falhou ou saiu vazio." >&2
-  [ -f /tmp/backup_db_err.log ] && sed 's/^/  pg_dump: /' /tmp/backup_db_err.log >&2
+  if [ -f /tmp/backup_db_err.log ]; then sed 's/^/  pg_dump: /' /tmp/backup_db_err.log >&2 || true; fi
   rm -f "$backup_file"
   if [ "$ALLOW_NO_BACKUP" = "1" ]; then
     echo "AVISO: ALLOW_NO_BACKUP=1, seguindo sem backup." >&2
@@ -84,5 +92,7 @@ fi
 # -----------------------------------------------------------------------------
 # 3. Retenção: mantém apenas os N backups mais recentes
 # -----------------------------------------------------------------------------
-ls -1t "$BACKUP_DIR"/backup_*.sql 2>/dev/null | tail -n +"$((KEEP_BACKUPS + 1))" | xargs -r rm --
-ls -1t "$BACKUP_DIR"/media_*.tar.gz 2>/dev/null | tail -n +"$((KEEP_BACKUPS + 1))" | xargs -r rm --
+# `|| true` porque, sem nenhum arquivo, o `ls` retorna 1 e o pipefail derrubaria
+# o script no ultimo passo, fazendo o deploy falhar depois de o backup ter dado certo.
+ls -1t "$BACKUP_DIR"/backup_*.sql 2>/dev/null | tail -n +"$((KEEP_BACKUPS + 1))" | xargs -r rm -- || true
+ls -1t "$BACKUP_DIR"/media_*.tar.gz 2>/dev/null | tail -n +"$((KEEP_BACKUPS + 1))" | xargs -r rm -- || true
