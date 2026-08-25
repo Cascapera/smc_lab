@@ -44,6 +44,17 @@ class Plan(models.TextChoices):
     PREMIUM_PLUS = "premium_plus", "Premium+"
 
 
+# Ordem de precedência entre os planos. Fica aqui, e não dentro de um método,
+# porque os pagamentos também precisam dela: um evento de plano inferior não
+# pode rebaixar um plano superior que ainda está vigente.
+PLAN_RANK = {
+    Plan.FREE: 0,
+    Plan.BASIC: 1,
+    Plan.PREMIUM: 2,
+    Plan.PREMIUM_PLUS: 3,
+}
+
+
 class Profile(models.Model):
     user = models.OneToOneField(
         User,
@@ -168,14 +179,8 @@ class Profile(models.Model):
         return self.plan
 
     def has_plan_at_least(self, required_plan: str) -> bool:
-        rank = {
-            Plan.FREE: 0,
-            Plan.BASIC: 1,
-            Plan.PREMIUM: 2,
-            Plan.PREMIUM_PLUS: 3,
-        }
-        user_rank = rank.get(self.active_plan(), -1)
-        required_rank = rank.get(required_plan, 999)
+        user_rank = PLAN_RANK.get(self.active_plan(), -1)
+        required_rank = PLAN_RANK.get(required_plan, 999)
         return user_rank >= required_rank
 
     def get_active_plan_display(self) -> str:

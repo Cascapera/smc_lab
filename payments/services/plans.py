@@ -36,7 +36,7 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
-from accounts.models import Profile
+from accounts.models import PLAN_RANK, Profile
 
 from ..models import Payment, PaymentStatus, Subscription, SubscriptionStatus
 
@@ -164,7 +164,7 @@ def apply_payment_event(
     if status in _REVOKE_STATUSES:
         if previous_status in _REVOKE_STATUSES:
             return ALREADY_PROCESSED
-        _maybe_revoke_plan(profile)
+        _maybe_revoke_plan(profile, plan)
         logger.info(
             "[payments] Plano revogado para user_id=%s (payment %s, status %s)",
             user_id,
@@ -309,7 +309,37 @@ def _find_subscription(
 # ---------------------------------------------------------------------------
 
 
+def _rebaixaria_plano_vigente(profile: Profile, plan: str | None) -> bool:
+    """
+    True quando o evento e de um plano INFERIOR ao que o usuario tem vigente.
+
+    O perfil guarda um unico par (plan, plan_expires_at), entao qualquer evento
+    sobrescrevia os dois. Cenario real: assinante com Basic mensal ativo compra
+    Premium+ anual; na cobranca mensal seguinte do Basic, o webhook rebaixava o
+    perfil para `basic` e truncava a validade para 30 dias - o usuario perdia
+    ~335 dias que ja tinha pago.
+
+    Quando isso acontece, nao mexemos no perfil e registramos em WARNING: e
+    sinal de assinaturas sobrepostas, que o suporte precisa ver.
+    """
+    if not plan:
+        return False
+    vigente = profile.active_plan()
+    return PLAN_RANK.get(plan, 0) < PLAN_RANK.get(vigente, 0)
+
+
 def _apply_plan(profile: Profile, plan_key: str, plan: str) -> None:
+    if _rebaixaria_plano_vigente(profile, plan):
+        logger.warning(
+            "[payments] Evento do plano %s ignorado para user_id=%s: o perfil tem %s "
+            "vigente ate %s. Assinaturas sobrepostas - verifique se ha cobranca duplicada.",
+            plan,
+            profile.user_id,
+            profile.active_plan(),
+            profile.plan_expires_at,
+        )
+        return
+
     now = timezone.now()
     start_at = (
         profile.plan_expires_at
@@ -328,7 +358,24 @@ def get_plan_duration(plan_key: str) -> int:
     return int(plan.get("duration_days", 30))
 
 
-def _maybe_revoke_plan(profile: Profile) -> None:
+def _maybe_revoke_plan(profile: Profile, plan: str | None = None) -> None:
+    """
+    Revoga o plano apos chargeback/estorno, se nao houver assinatura ativa.
+
+    `plan` e o plano do evento. Um estorno de Basic nao pode zerar o perfil de
+    quem tem Premium+ vigente - antes zerava, porque a funcao so olhava se
+    existia alguma Subscription AUTHORIZED (e compras anuais one-time nao criam
+    Subscription).
+    """
+    if _rebaixaria_plano_vigente(profile, plan):
+        logger.warning(
+            "[payments] Estorno do plano %s nao revoga o perfil de user_id=%s, que tem %s vigente.",
+            plan,
+            profile.user_id,
+            profile.active_plan(),
+        )
+        return
+
     active = Subscription.objects.filter(
         user_id=profile.user_id,
         status=SubscriptionStatus.AUTHORIZED,
@@ -343,6 +390,16 @@ def _maybe_revoke_plan(profile: Profile) -> None:
 
 
 def _schedule_plan_end(profile: Profile, preapproval_data: dict, plan: str | None = None) -> None:
+    if _rebaixaria_plano_vigente(profile, plan):
+        logger.warning(
+            "[payments] Cancelamento da assinatura %s nao altera o perfil de user_id=%s, "
+            "que tem %s vigente.",
+            plan,
+            profile.user_id,
+            profile.active_plan(),
+        )
+        return
+
     next_payment_date = preapproval_data.get("next_payment_date")
     if not next_payment_date:
         auto_recurring = preapproval_data.get("auto_recurring") or {}
@@ -368,7 +425,7 @@ def _schedule_plan_end(profile: Profile, preapproval_data: dict, plan: str | Non
         profile.save(update_fields=update_fields)
         return
 
-    _maybe_revoke_plan(profile)
+    _maybe_revoke_plan(profile, plan)
 
 
 def _parse_mp_datetime(value: object | None) -> datetime | None:

@@ -5,12 +5,15 @@ Testes do app payments - MercadoPago, webhook, views.
 import hashlib
 import hmac
 import json
+from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
+import requests
 from django.db.utils import IntegrityError
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from accounts.tests import create_user
 
@@ -656,3 +659,178 @@ class WebhookIdempotencyTest(TestCase):
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.plan_expires_at, expira_apos_primeira)
         self.assertEqual(Subscription.objects.filter(mp_preapproval_id="pre_webhook").count(), 1)
+
+
+# ---------------------------------------------------------------------------
+# Regra de ranking: evento de plano inferior não rebaixa plano superior (P3)
+# ---------------------------------------------------------------------------
+
+
+class RankingDePlanosTest(TestCase):
+    """
+    O perfil guarda um único par (plan, plan_expires_at), então qualquer evento
+    sobrescrevia os dois.
+
+    Cenário real: assinante com Basic mensal ativo compra Premium+ anual. Na
+    cobrança mensal seguinte do Basic, o webhook rebaixava o perfil para `basic`
+    e truncava a validade para 30 dias — o usuário perdia ~335 dias já pagos.
+    """
+
+    def setUp(self):
+        self.user = create_user()
+        self.profile = self.user.profile
+
+    def _dar_plano(self, plano, dias):
+        self.profile.plan = plano
+        self.profile.plan_expires_at = timezone.now() + timedelta(days=dias)
+        self.profile.save()
+
+    def test_evento_inferior_nao_rebaixa_plano_vigente(self):
+        self._dar_plano("premium_plus", dias=365)
+        expira_antes = self.profile.plan_expires_at
+
+        apply_payment_event(
+            _payment_payload(self.user, payment_id="pay_basic", plan_key="basic_monthly")
+        )
+
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.plan, "premium_plus")
+        self.assertEqual(self.profile.plan_expires_at, expira_antes)
+
+    def test_evento_superior_faz_upgrade(self):
+        self._dar_plano("basic", dias=20)
+        payload = _payment_payload(self.user, payment_id="pay_pp")
+        payload["metadata"]["plan"] = "premium_plus"
+        payload["metadata"]["plan_key"] = "premium_plus_annual"
+
+        apply_payment_event(payload)
+
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.plan, "premium_plus")
+
+    def test_mesmo_plano_acumula_periodo(self):
+        self._dar_plano("basic", dias=10)
+        expira_antes = self.profile.plan_expires_at
+
+        apply_payment_event(_payment_payload(self.user, payment_id="pay_renov"))
+
+        self.profile.refresh_from_db()
+        self.assertGreater(self.profile.plan_expires_at, expira_antes)
+
+    def test_evento_inferior_volta_a_valer_com_plano_expirado(self):
+        """Se o plano superior já venceu, o pagamento do inferior deve valer."""
+        self.profile.plan = "premium_plus"
+        self.profile.plan_expires_at = timezone.now() - timedelta(days=1)
+        self.profile.save()
+
+        apply_payment_event(_payment_payload(self.user, payment_id="pay_basic2"))
+
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.plan, "basic")
+
+    def test_estorno_de_plano_inferior_nao_zera_plano_superior(self):
+        """
+        Antes: chargeback de um Basic zerava o perfil de quem tinha Premium+,
+        porque a revogação só olhava se existia Subscription AUTHORIZED — e
+        compras anuais one-time não criam Subscription.
+        """
+        self._dar_plano("premium_plus", dias=300)
+
+        apply_payment_event(
+            _payment_payload(
+                self.user, payment_id="pay_cb_basic", status="chargeback", plan_key="basic_monthly"
+            )
+        )
+
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.plan, "premium_plus")
+        self.assertIsNotNone(self.profile.plan_expires_at)
+
+    def test_estorno_do_proprio_plano_revoga(self):
+        self._dar_plano("basic", dias=20)
+
+        apply_payment_event(_payment_payload(self.user, payment_id="pay_cb", status="chargeback"))
+
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.plan, "free")
+
+    def test_cancelamento_de_assinatura_inferior_nao_altera_plano_superior(self):
+        self._dar_plano("premium_plus", dias=300)
+        expira_antes = self.profile.plan_expires_at
+        Subscription.objects.create(
+            user=self.user,
+            plan="basic",
+            plan_key="basic_monthly",
+            amount=Decimal("79.90"),
+            status=SubscriptionStatus.AUTHORIZED,
+            mp_preapproval_id="pre_basic",
+        )
+
+        apply_preapproval_event(
+            _preapproval_payload(self.user, preapproval_id="pre_basic", status="cancelled")
+        )
+
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.plan, "premium_plus")
+        self.assertEqual(self.profile.plan_expires_at, expira_antes)
+
+
+# ---------------------------------------------------------------------------
+# Webhook não perde evento quando o Mercado Pago está instável (P5)
+# ---------------------------------------------------------------------------
+
+
+@override_settings(MERCADOPAGO_WEBHOOK_SECRET="")
+class WebhookErroTransitorioTest(TestCase):
+    """
+    Falha ao consultar o MP respondia 200: o MP considera entregue e nunca
+    reenvia, então o pagamento aprovado nunca liberava o plano. Instabilidade de
+    um minuto virava suporte manual.
+    """
+
+    def setUp(self):
+        self.user = create_user()
+        self.url = reverse("payments:webhook")
+
+    def _post(self):
+        return self.client.post(
+            self.url,
+            data=json.dumps({"type": "payment", "data": {"id": "pay_x"}}),
+            content_type="application/json",
+        )
+
+    def _http_error(self, status):
+        resposta = requests.Response()
+        resposta.status_code = status
+        return requests.HTTPError(response=resposta)
+
+    @patch("payments.views.fetch_payment")
+    def test_timeout_pede_reenvio(self, mock_fetch):
+        mock_fetch.side_effect = requests.Timeout("tempo esgotado")
+        self.assertEqual(self._post().status_code, 503)
+
+    @patch("payments.views.fetch_payment")
+    def test_queda_de_conexao_pede_reenvio(self, mock_fetch):
+        mock_fetch.side_effect = requests.ConnectionError("conexao recusada")
+        self.assertEqual(self._post().status_code, 503)
+
+    @patch("payments.views.fetch_payment")
+    def test_erro_500_do_mp_pede_reenvio(self, mock_fetch):
+        mock_fetch.side_effect = self._http_error(500)
+        self.assertEqual(self._post().status_code, 503)
+
+    @patch("payments.views.fetch_payment")
+    def test_rate_limit_pede_reenvio(self, mock_fetch):
+        mock_fetch.side_effect = self._http_error(429)
+        self.assertEqual(self._post().status_code, 503)
+
+    @patch("payments.views.fetch_payment")
+    def test_404_nao_pede_reenvio(self, mock_fetch):
+        """Id que não existe é permanente: reenviar só geraria ruído."""
+        mock_fetch.side_effect = self._http_error(404)
+        self.assertEqual(self._post().status_code, 200)
+
+    @patch("payments.views.fetch_payment")
+    def test_400_nao_pede_reenvio(self, mock_fetch):
+        mock_fetch.side_effect = self._http_error(400)
+        self.assertEqual(self._post().status_code, 200)
