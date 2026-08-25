@@ -101,6 +101,10 @@ class Subscription(models.Model):
     mp_plan_id = models.CharField("plano MP", max_length=120, blank=True)
     mp_preapproval_id = models.CharField("assinatura MP", max_length=120, blank=True)
     external_reference = models.CharField("referência", max_length=120, blank=True)
+    # Data da próxima cobrança segundo o Mercado Pago. Guardada para o suporte
+    # conseguir conferir a validade do plano contra o calendário real de cobrança
+    # sem precisar consultar a API.
+    next_payment_date = models.DateTimeField("próxima cobrança", null=True, blank=True)
     raw_payload = models.JSONField("payload", blank=True, null=True)
     created_at = models.DateTimeField("criado em", auto_now_add=True)
     updated_at = models.DateTimeField("atualizado em", auto_now=True)

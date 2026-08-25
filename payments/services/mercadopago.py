@@ -106,10 +106,41 @@ def fetch_preapproval(preapproval_id: str) -> dict[str, Any]:
     return resp.json()
 
 
+def fetch_authorized_payment(authorized_payment_id: str) -> dict[str, Any]:
+    """
+    Consulta um pagamento autorizado de assinatura.
+
+    O evento `subscription_authorized_payment` traz o id de um *authorized
+    payment*, que vive num endpoint proprio - nao e um payment comum. Consultar
+    /v1/payments/{id} com esse id devolve 404, que era o que acontecia: o evento
+    caia no ramo de pagamento, dava 404 e sumia sem deixar rastro.
+    """
+    config = get_config()
+    if not config.access_token:
+        raise RuntimeError("MERCADOPAGO_ACCESS_TOKEN não configurado.")
+
+    resp = requests.get(
+        f"https://api.mercadopago.com/authorized_payments/{authorized_payment_id}",
+        headers=_headers(config.access_token),
+        timeout=20,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
 def extract_payment_id(query_params: dict[str, Any], payload: dict[str, Any]) -> str | None:
-    payment_id = query_params.get("data.id") or query_params.get("id")
-    if payment_id:
-        return str(payment_id)
+    """
+    Extrai o id do recurso de uma notificacao ou do retorno do checkout.
+
+    `payment_id` esta na lista porque e o parametro que o Mercado Pago devolve
+    na back_url depois de um pagamento avulso. Sem ele, a pagina de retorno nunca
+    reconhecia pagamentos one-time e dependia exclusivamente do webhook.
+    """
+    for chave in ("data.id", "id", "payment_id", "collection_id", "preapproval_id"):
+        valor = query_params.get(chave)
+        # O MP manda collection_id=null como string quando nao ha pagamento.
+        if valor and str(valor).lower() not in ("null", "none"):
+            return str(valor)
 
     data = payload.get("data") or {}
     data_id = data.get("id")

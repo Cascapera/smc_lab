@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 
 import requests
 from django.conf import settings
@@ -23,6 +24,7 @@ from .services.mercadopago import (
     create_preapproval_plan,
     create_preference,
     extract_payment_id,
+    fetch_authorized_payment,
     fetch_payment,
     fetch_preapproval,
     validate_webhook_signature,
@@ -30,6 +32,19 @@ from .services.mercadopago import (
 from .services.plans import apply_payment_event, apply_preapproval_event
 
 logger = logging.getLogger(__name__)
+
+
+def _link_de_checkout(recurso: dict) -> str | None:
+    """
+    Link para onde mandar o usuário.
+
+    Em sandbox o campo é `sandbox_init_point`; usar `init_point` ali levava para
+    o checkout de produção. E `redirect(None)` levantava exceção quando o MP
+    respondia 201 sem o campo.
+    """
+    if settings.MERCADOPAGO_USE_SANDBOX:
+        return recurso.get("sandbox_init_point") or recurso.get("init_point")
+    return recurso.get("init_point")
 
 
 class PlanListView(TemplateView):
@@ -49,7 +64,17 @@ class PlanListView(TemplateView):
 
 
 class CreateCheckoutView(LoginRequiredMixin, View):
-    def get(self, request: HttpRequest, plan: str) -> HttpResponse:
+    """
+    Inicia o checkout no Mercado Pago.
+
+    Só aceita POST. Como GET, criava preapproval no MP e Subscription no banco
+    como efeito colateral de uma navegação: qualquer prefetch de link (WhatsApp,
+    Slack, o próprio browser) gerava assinatura pendente, e um link em site de
+    terceiro fazia o usuário logado criar uma assinatura sem intenção nenhuma
+    (navegação top-level passa com SameSite=Lax).
+    """
+
+    def post(self, request: HttpRequest, plan: str) -> HttpResponse:
         plan_key = plan.lower()
         if plan_key not in settings.MERCADOPAGO_PLANS:
             messages.error(request, "Plano inválido.")
@@ -72,9 +97,9 @@ class CreateCheckoutView(LoginRequiredMixin, View):
                 "Configure MERCADOPAGO_BACK_URL com a URL pública (ngrok) no .env.",
             )
             return redirect(reverse("payments:plans"))
-        external_reference = (
-            f"user:{request.user.id}|plan:{plan_key}|ts:{int(timezone.now().timestamp())}"
-        )
+        # uuid4 e nao timestamp: em segundos, dois cliques no mesmo segundo geravam
+        # a mesma referencia, e o webhook casava com a assinatura errada.
+        external_reference = f"user:{request.user.id}|plan:{plan_key}|ref:{uuid.uuid4().hex[:12]}"
 
         payer_email = request.user.email
         if settings.MERCADOPAGO_USE_SANDBOX and settings.MERCADOPAGO_TEST_PAYER_EMAIL:
@@ -116,14 +141,27 @@ class CreateCheckoutView(LoginRequiredMixin, View):
             try:
                 preference = create_preference(preference_payload)
             except Exception as exc:
+                # O RuntimeError do serviço carrega o corpo da resposta do MP,
+                # com ids internos e mensagens em inglês. Isso vai para o log,
+                # não para a tela do cliente.
+                logger.exception("[payments] Falha ao criar preferência: %s", exc)
                 messages.error(
                     request,
-                    f"Não foi possível iniciar o pagamento. {exc}",
+                    "Não foi possível iniciar o pagamento agora. "
+                    "Tente novamente em alguns minutos.",
                 )
                 return redirect(reverse("payments:plans"))
 
-            init_point = preference.get("init_point")
-            return redirect(init_point)
+            destino = _link_de_checkout(preference)
+            if not destino:
+                logger.error("[payments] Preferência criada sem init_point: %s", preference)
+                messages.error(
+                    request,
+                    "Não foi possível iniciar o pagamento agora. "
+                    "Tente novamente em alguns minutos.",
+                )
+                return redirect(reverse("payments:plans"))
+            return redirect(destino)
 
         preapproval_payload = {
             "reason": config["label"],
@@ -149,9 +187,10 @@ class CreateCheckoutView(LoginRequiredMixin, View):
         try:
             preapproval = create_preapproval(preapproval_payload)
         except Exception as exc:
+            logger.exception("[payments] Falha ao criar assinatura: %s", exc)
             messages.error(
                 request,
-                f"Não foi possível iniciar a assinatura. {exc}",
+                "Não foi possível iniciar a assinatura agora. Tente novamente em alguns minutos.",
             )
             return redirect(reverse("payments:plans"))
 
@@ -168,8 +207,15 @@ class CreateCheckoutView(LoginRequiredMixin, View):
             raw_payload=preapproval,
         )
 
-        init_point = preapproval.get("init_point")
-        return redirect(init_point)
+        destino = _link_de_checkout(preapproval)
+        if not destino:
+            logger.error("[payments] Preapproval criada sem init_point: %s", preapproval)
+            messages.error(
+                request,
+                "Não foi possível iniciar a assinatura agora. Tente novamente em alguns minutos.",
+            )
+            return redirect(reverse("payments:plans"))
+        return redirect(destino)
 
 
 def _erro_e_transitorio(exc: Exception) -> bool:
@@ -273,12 +319,25 @@ class MercadoPagoWebhookView(View):
     O MP reenvia a mesma notificação várias vezes (e em paralelo) até receber um
     200 rápido. Toda a aplicação de plano passa por `payments.services.plans`,
     que garante que cada pagamento/assinatura só produza efeito uma vez.
+
+    O roteamento por tipo é explícito e nunca adivinha. Antes, tudo que não
+    fosse exatamente `preapproval` caía no fluxo de pagamento: um
+    `subscription_preapproval` (o formato atual para eventos de assinatura)
+    virava `fetch_payment(<id de preapproval>)`, respondia 404 e sumia sem
+    deixar rastro. Cancelamento, pausa e expiração de assinatura nunca chegavam
+    ao banco — o acesso só era cortado quando a data vencia.
     """
 
-    # Topics conhecidos hoje. Os demais são logados em WARNING para sabermos
-    # exatamente o que a conta recebe antes de mapear os formatos novos
-    # (`subscription_preapproval`, `subscription_authorized_payment`).
-    KNOWN_TOPICS = {"preapproval", "payment"}
+    # Eventos de assinatura. O MP usa os dois nomes conforme a versão da
+    # integração que criou a notificação.
+    TOPICOS_ASSINATURA = {"preapproval", "subscription_preapproval"}
+
+    # Pagamento avulso ou cobrança de cartão.
+    TOPICOS_PAGAMENTO = {"payment"}
+
+    # Cobrança recorrente de uma assinatura. Vive em /authorized_payments/{id},
+    # não em /v1/payments/{id}.
+    TOPICOS_PAGAMENTO_ASSINATURA = {"subscription_authorized_payment"}
 
     def post(self, request: HttpRequest) -> HttpResponse:
         try:
@@ -301,48 +360,103 @@ class MercadoPagoWebhookView(View):
             )
 
         topic = payload.get("type") or payload.get("topic") or request.GET.get("topic")
-        if topic not in self.KNOWN_TOPICS:
-            logger.warning(
-                "[payments] Webhook com topic desconhecido: %r (data_id=%s). "
-                "Tratando como pagamento.",
-                topic,
-                data_id,
-            )
-
-        if topic == "preapproval":
-            if not data_id:
-                return HttpResponse(status=200)
-            try:
-                preapproval_data = fetch_preapproval(data_id)
-            except Exception as exc:
-                logger.exception(
-                    "[payments] Erro ao buscar preapproval %s no webhook: %s", data_id, exc
-                )
-                if _erro_e_transitorio(exc):
-                    # 503 faz o Mercado Pago reenviar com backoff. Responder 200
-                    # aqui descartava o evento e o plano nunca era liberado.
-                    return HttpResponse(status=503)
-                return HttpResponse(status=200)
-
-            preapproval_data.setdefault("id", data_id)
-            result = apply_preapproval_event(preapproval_data)
-            logger.info("[payments] Webhook: preapproval %s -> %s", data_id, result)
-            return HttpResponse(status=200)
 
         if not data_id:
+            logger.info("[payments] Webhook sem id de recurso (topic=%r); ignorado.", topic)
             return HttpResponse(status=200)
 
+        if topic in self.TOPICOS_ASSINATURA:
+            return self._tratar_assinatura(data_id)
+
+        if topic in self.TOPICOS_PAGAMENTO:
+            return self._tratar_pagamento(data_id)
+
+        if topic in self.TOPICOS_PAGAMENTO_ASSINATURA:
+            return self._tratar_pagamento_de_assinatura(data_id)
+
+        # Nada de adivinhar: um id de preapproval consultado como pagamento dá
+        # 404 e o evento se perde em silêncio. Respondemos 200 (não adianta o MP
+        # reenviar algo que não sabemos tratar) e registramos o suficiente para
+        # mapear o formato depois.
+        logger.warning(
+            "[payments] Webhook com topic não tratado: %r (id=%s). Payload: %s",
+            topic,
+            data_id,
+            json.dumps(payload)[:500],
+        )
+        return HttpResponse(status=200)
+
+    # -- fluxos -------------------------------------------------------------
+
+    def _tratar_assinatura(self, preapproval_id: str) -> HttpResponse:
         try:
-            payment_data = fetch_payment(data_id)
+            dados = fetch_preapproval(preapproval_id)
         except Exception as exc:
-            logger.exception("[payments] Erro ao buscar payment %s no webhook: %s", data_id, exc)
-            if _erro_e_transitorio(exc):
-                return HttpResponse(status=503)
+            return self._falha_na_consulta("preapproval", preapproval_id, exc)
+
+        dados.setdefault("id", preapproval_id)
+        resultado = apply_preapproval_event(dados)
+        logger.info("[payments] Webhook: preapproval %s -> %s", preapproval_id, resultado)
+        return HttpResponse(status=200)
+
+    def _tratar_pagamento(self, payment_id: str) -> HttpResponse:
+        try:
+            dados = fetch_payment(payment_id)
+        except Exception as exc:
+            return self._falha_na_consulta("payment", payment_id, exc)
+
+        dados.setdefault("id", payment_id)
+        resultado = apply_payment_event(dados)
+        logger.info("[payments] Webhook: payment %s -> %s", payment_id, resultado)
+        return HttpResponse(status=200)
+
+    def _tratar_pagamento_de_assinatura(self, authorized_payment_id: str) -> HttpResponse:
+        """
+        Cobrança recorrente de uma assinatura.
+
+        O recurso traz o `payment` real dentro dele; é esse que carrega status e
+        metadata. Sem o payment embutido, não há o que aplicar — respondemos 200
+        e registramos, porque reenviar não mudaria nada.
+        """
+        try:
+            dados = fetch_authorized_payment(authorized_payment_id)
+        except Exception as exc:
+            return self._falha_na_consulta("authorized_payment", authorized_payment_id, exc)
+
+        pagamento = dados.get("payment") or {}
+        payment_id = pagamento.get("id")
+        if not payment_id:
+            logger.warning(
+                "[payments] authorized_payment %s sem payment embutido; ignorado.",
+                authorized_payment_id,
+            )
             return HttpResponse(status=200)
 
-        payment_data.setdefault("id", data_id)
-        result = apply_payment_event(payment_data)
-        logger.info("[payments] Webhook: payment %s -> %s", data_id, result)
+        # O recurso embutido é resumido (status e id). Buscamos o pagamento
+        # completo, que é onde estão o metadata e o valor.
+        try:
+            dados_pagamento = fetch_payment(str(payment_id))
+        except Exception as exc:
+            return self._falha_na_consulta("payment", str(payment_id), exc)
+
+        dados_pagamento.setdefault("id", str(payment_id))
+        resultado = apply_payment_event(dados_pagamento)
+        logger.info(
+            "[payments] Webhook: authorized_payment %s -> payment %s -> %s",
+            authorized_payment_id,
+            payment_id,
+            resultado,
+        )
+        return HttpResponse(status=200)
+
+    def _falha_na_consulta(self, recurso: str, identificador: str, exc: Exception) -> HttpResponse:
+        logger.exception(
+            "[payments] Erro ao buscar %s %s no webhook: %s", recurso, identificador, exc
+        )
+        if _erro_e_transitorio(exc):
+            # 503 faz o Mercado Pago reenviar com backoff. Responder 200 aqui
+            # descartava o evento e o plano nunca era liberado.
+            return HttpResponse(status=503)
         return HttpResponse(status=200)
 
 

@@ -52,6 +52,7 @@ IGNORED_NO_METADATA = "ignored_no_metadata"
 IGNORED_NO_PROFILE = "ignored_no_profile"
 IGNORED_STATUS = "ignored_status"
 IGNORED_NO_ID = "ignored_no_id"
+IGNORED_VALOR_INVALIDO = "ignored_valor_invalido"
 
 _REVOKE_STATUSES = {PaymentStatus.CHARGEDBACK, PaymentStatus.REFUNDED}
 _END_STATUSES = {
@@ -75,6 +76,38 @@ def _to_decimal(value: object, default: str = "0.00") -> Decimal:
         return Decimal(str(value))
     except (TypeError, ValueError, InvalidOperation):
         return Decimal(default)
+
+
+def _valor_confere(plan_key: str, payment_data: dict) -> tuple[bool, str]:
+    """
+    Confere se o valor pago corresponde ao plano que o metadata reivindica.
+
+    Sem esta checagem, qualquer pagamento aprovado na conta com
+    `metadata.plan_key` liberava o plano correspondente, independentemente do
+    valor. O plano oculto `premium_plus_test` custa R$ 5,00 e usa exatamente o
+    mesmo caminho do `premium_plus_annual`, de R$ 1.800,00.
+
+    Tolerância de 1 centavo por causa de arredondamento na conversão para float
+    que o Mercado Pago faz no payload.
+    """
+    config = settings.MERCADOPAGO_PLANS.get(plan_key)
+    if not config:
+        return False, f"plano desconhecido: {plan_key}"
+
+    esperado = _to_decimal(config.get("amount"), "0.00")
+    if esperado <= 0:
+        return True, ""
+
+    pago = _to_decimal(payment_data.get("transaction_amount"), "0.00")
+    if pago < esperado - Decimal("0.01"):
+        return False, f"valor pago {pago} menor que {esperado} do plano {plan_key}"
+
+    moeda_paga = (payment_data.get("currency_id") or "").upper()
+    moeda_esperada = (settings.MERCADOPAGO_CURRENCY or "BRL").upper()
+    if moeda_paga and moeda_paga != moeda_esperada:
+        return False, f"moeda {moeda_paga} diferente de {moeda_esperada}"
+
+    return True, ""
 
 
 # ---------------------------------------------------------------------------
@@ -152,7 +185,26 @@ def apply_payment_event(
             return ALREADY_PROCESSED
         if not plan_key or not plan:
             return IGNORED_NO_METADATA
-        _apply_plan(profile, plan_key, plan)
+
+        confere, motivo = _valor_confere(plan_key, payment_data)
+        if not confere:
+            logger.error(
+                "[payments] Pagamento %s NAO liberou plano para user_id=%s: %s",
+                mp_payment_id,
+                user_id,
+                motivo,
+            )
+            return IGNORED_VALOR_INVALIDO
+
+        expira_em = None
+        if e_assinatura(plan_key):
+            # Ancorado na data em que o MP aprovou a cobranca: cada ciclo
+            # recalcula a validade em vez de somar sobre a anterior, o que
+            # elimina tanto a dupla contagem quanto a deriva.
+            aprovado_em = _parse_mp_datetime(payment_data.get("date_approved")) or timezone.now()
+            expira_em = _validade_de_assinatura(aprovado_em, plan_key)
+
+        _apply_plan(profile, plan_key, plan, expira_em=expira_em)
         logger.info(
             "[payments] Plano %s aplicado para user_id=%s (payment %s)",
             plan_key,
@@ -231,12 +283,14 @@ def apply_preapproval_event(
     subscription.raw_payload = preapproval_data
     if external_reference and not subscription.external_reference:
         subscription.external_reference = external_reference
+    subscription.next_payment_date = _parse_mp_datetime(_extrair_proxima_cobranca(preapproval_data))
     subscription.save(
         update_fields=[
             "mp_preapproval_id",
             "status",
             "raw_payload",
             "external_reference",
+            "next_payment_date",
             "updated_at",
         ]
     )
@@ -250,7 +304,12 @@ def apply_preapproval_event(
         return IGNORED_NO_PROFILE
 
     if status == SubscriptionStatus.AUTHORIZED:
-        _apply_plan(profile, subscription.plan_key, subscription.plan)
+        # `next_payment_date` e a data da proxima cobranca segundo o proprio MP.
+        # Num trial, e o fim do trial - por isso o plano nao pode mais liberar um
+        # ciclo inteiro aqui.
+        proxima = _parse_mp_datetime(_extrair_proxima_cobranca(preapproval_data))
+        expira_em = (proxima + timedelta(days=dias_de_carencia())) if proxima else None
+        _apply_plan(profile, subscription.plan_key, subscription.plan, expira_em=expira_em)
         logger.info(
             "[payments] Assinatura %s autorizada; plano %s aplicado para user_id=%s",
             preapproval_id,
@@ -328,7 +387,47 @@ def _rebaixaria_plano_vigente(profile: Profile, plan: str | None) -> bool:
     return PLAN_RANK.get(plan, 0) < PLAN_RANK.get(vigente, 0)
 
 
-def _apply_plan(profile: Profile, plan_key: str, plan: str) -> None:
+def dias_de_carencia() -> int:
+    """Folga apos a data de cobranca, para o plano nao cair antes do webhook chegar."""
+    return int(getattr(settings, "MERCADOPAGO_GRACE_DAYS", 3))
+
+
+def e_assinatura(plan_key: str) -> bool:
+    config = settings.MERCADOPAGO_PLANS.get(plan_key) or {}
+    return config.get("billing_type", "subscription") == "subscription"
+
+
+def _validade_de_assinatura(base: datetime, plan_key: str) -> datetime:
+    """Fim do ciclo a partir de uma data de referencia, mais a carencia."""
+    return base + timedelta(days=get_plan_duration(plan_key) + dias_de_carencia())
+
+
+def _apply_plan(
+    profile: Profile,
+    plan_key: str,
+    plan: str,
+    *,
+    expira_em: datetime | None = None,
+) -> None:
+    """
+    Aplica o plano ao perfil.
+
+    `expira_em` define a validade em vez de somar um periodo. E o modo usado por
+    assinaturas: a validade passa a espelhar o calendario de cobranca do Mercado
+    Pago em vez de acumular.
+
+    Por que isso importa: numa assinatura mensal, o evento `authorized` somava 30
+    dias E o primeiro `payment approved` somava outros 30 - 60 dias por uma unica
+    cobranca. A idempotencia nao pega esse caso, porque sao dois eventos
+    distintos, cada um legitimo uma vez. Com trial de 7 dias era pior ainda: o
+    `authorized` liberava 30 dias na hora.
+
+    Somar tambem produzia deriva: meses de 31 dias faziam a validade vencer antes
+    da cobranca seguinte, e o assinante caia para FREE ate o webhook chegar.
+
+    A validade nunca encurta (`max`), para um ajuste manual do suporte nao ser
+    desfeito pelo proximo evento.
+    """
     if _rebaixaria_plano_vigente(profile, plan):
         logger.warning(
             "[payments] Evento do plano %s ignorado para user_id=%s: o perfil tem %s "
@@ -341,14 +440,21 @@ def _apply_plan(profile: Profile, plan_key: str, plan: str) -> None:
         return
 
     now = timezone.now()
-    start_at = (
-        profile.plan_expires_at
-        if profile.plan == plan and profile.plan_expires_at and profile.plan_expires_at > now
-        else now
-    )
+
+    if expira_em is not None:
+        # Modo assinatura: define a validade, nao soma.
+        nova_validade = max(expira_em, profile.plan_expires_at or now)
+    else:
+        # Modo avulso: acumula, para compras seguidas somarem periodo.
+        start_at = (
+            profile.plan_expires_at
+            if profile.plan == plan and profile.plan_expires_at and profile.plan_expires_at > now
+            else now
+        )
+        nova_validade = start_at + timedelta(days=get_plan_duration(plan_key))
 
     profile.plan = plan
-    profile.plan_expires_at = start_at + timedelta(days=get_plan_duration(plan_key))
+    profile.plan_expires_at = nova_validade
     profile.save(update_fields=["plan", "plan_expires_at"])
     _schedule_discord_sync(profile.user_id)
 
@@ -389,6 +495,15 @@ def _maybe_revoke_plan(profile: Profile, plan: str | None = None) -> None:
     _schedule_discord_sync(profile.user_id)
 
 
+def _extrair_proxima_cobranca(preapproval_data: dict) -> object | None:
+    """Data da proxima cobranca, que o MP manda na raiz ou em auto_recurring."""
+    valor = preapproval_data.get("next_payment_date")
+    if valor:
+        return valor
+    auto_recurring = preapproval_data.get("auto_recurring") or {}
+    return auto_recurring.get("next_payment_date") or auto_recurring.get("end_date")
+
+
 def _schedule_plan_end(profile: Profile, preapproval_data: dict, plan: str | None = None) -> None:
     if _rebaixaria_plano_vigente(profile, plan):
         logger.warning(
@@ -400,14 +515,7 @@ def _schedule_plan_end(profile: Profile, preapproval_data: dict, plan: str | Non
         )
         return
 
-    next_payment_date = preapproval_data.get("next_payment_date")
-    if not next_payment_date:
-        auto_recurring = preapproval_data.get("auto_recurring") or {}
-        next_payment_date = auto_recurring.get("next_payment_date") or auto_recurring.get(
-            "end_date"
-        )
-
-    next_dt = _parse_mp_datetime(next_payment_date)
+    next_dt = _parse_mp_datetime(_extrair_proxima_cobranca(preapproval_data))
     now = timezone.now()
     if next_dt and next_dt > now:
         update_fields: list[str] = []

@@ -253,9 +253,14 @@ CELERY_BEAT_SCHEDULE = {
         "task": "discord_integration.tasks.sync_all_discord_roles",
         "schedule": crontab(minute=0, hour=4),
     },
-    "downgrade-expired-plans-daily": {
+    # De hora em hora, nao 1x/dia: `Profile.plan` e o campo bruto, e ate a task
+    # rodar ele mostra um plano ja vencido como se estivesse ativo. As views usam
+    # `active_plan()` e ja tratam a expiracao, mas o admin e os relatorios leem o
+    # campo direto.
+    "downgrade-expired-plans-hourly": {
         "task": "accounts.tasks.downgrade_expired_plans",
-        "schedule": crontab(minute=0, hour=5),
+        "schedule": crontab(minute=10),
+        "options": {"expires": 1800},
     },
     # Limpeza das variacoes macro antigas. Roda as 03:30, antes da sincronizacao
     # do Discord (04:00) e do downgrade de planos (05:00), e fora do horario de
@@ -283,6 +288,9 @@ MERCADOPAGO_WEBHOOK_URL = env("MERCADOPAGO_WEBHOOK_URL", default="")
 MERCADOPAGO_WEBHOOK_SECRET = env("MERCADOPAGO_WEBHOOK_SECRET", default="")
 MERCADOPAGO_TEST_PAYER_EMAIL = env("MERCADOPAGO_TEST_PAYER_EMAIL", default="")
 MERCADOPAGO_TRIAL_DAYS = env.int("MERCADOPAGO_TRIAL_DAYS", default=7)
+# Folga apos a data de cobranca antes de o plano cair. Absorve atraso de webhook,
+# retentativa de cartao e fim de semana.
+MERCADOPAGO_GRACE_DAYS = env.int("MERCADOPAGO_GRACE_DAYS", default=3)
 MERCADOPAGO_PREMIUM_PLUS_MONTHLY_PRICE = env(
     "MERCADOPAGO_PREMIUM_PLUS_MONTHLY_PRICE", default="250.00"
 )
