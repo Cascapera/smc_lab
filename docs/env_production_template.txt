@@ -1,27 +1,65 @@
 # ============================================
 # Configuração de Produção - AWS Lightsail
 # ============================================
-# Copie este conteúdo para .env no servidor e preencha os valores
+# Copie este conteúdo para .env no servidor e preencha os valores.
+#
+# ATENÇÃO ao formato das listas: use CSV, NÃO use JSON.
+#   certo:  DJANGO_ALLOWED_HOSTS=smclab.com.br,www.smclab.com.br
+#   errado: DJANGO_ALLOWED_HOSTS=["smclab.com.br","www.smclab.com.br"]
+# O django-environ faz split por vírgula; com colchetes e aspas o host fica
+# literalmente como `["smclab.com.br"` e TODA requisição responde 400
+# DisallowedHost.
+#
+# Também não use aspas em volta dos valores nem espaços ao redor do `=`.
 
-# Django Settings
+# --------------------------------------------
+# Django (obrigatórias: sem elas o worker/beat não sobem)
+# --------------------------------------------
+DJANGO_SETTINGS_MODULE=trader_portal.settings.prod
 DJANGO_SECRET_KEY=GERE_UMA_CHAVE_SECRETA_AQUI
 DJANGO_DEBUG=False
-DJANGO_ALLOWED_HOSTS=["smclab.com.br","www.smclab.com.br","SEU_IP_LIGHTSAIL"]
+DJANGO_ALLOWED_HOSTS=smclab.com.br,www.smclab.com.br,SEU_IP_LIGHTSAIL
 
-# Database (PostgreSQL)
+# Necessário para POST via HTTPS (login, formulários) não dar 403 CSRF
+DJANGO_CSRF_TRUSTED_ORIGINS=https://smclab.com.br,https://www.smclab.com.br
+
+# Diz ao Django que a conexão original era HTTPS quando o TLS termina no nginx.
+# Sem isto, com SECURE_SSL_REDIRECT ligado, o site entra em loop de redirect.
+# Exige que o nginx envie: proxy_set_header X-Forwarded-Proto $scheme;
+DJANGO_SECURE_PROXY_SSL_HEADER=HTTP_X_FORWARDED_PROTO,https
+
+# --------------------------------------------
+# Banco de dados (PostgreSQL)
+# --------------------------------------------
 # Formato: postgres://usuario:senha@postgres:5432/nome_banco
+# O host `postgres` é o nome do serviço no docker-compose.
 DATABASE_URL=postgres://trader_user:SENHA_SUPER_SEGURA_AQUI@postgres:5432/trader_portal
 
-# Celery (Redis)
+# Usadas pelo docker-compose para inicializar o container do Postgres.
+# POSTGRES_PASSWORD precisa bater com a senha da DATABASE_URL acima; se ficar
+# vazia, o container do Postgres não inicializa um volume novo.
+POSTGRES_DB=trader_portal
+POSTGRES_USER=trader_user
+POSTGRES_PASSWORD=SENHA_SUPER_SEGURA_AQUI
+
+# --------------------------------------------
+# Celery e cache (Redis)
+# --------------------------------------------
 CELERY_BROKER_URL=redis://redis:6379/0
 CELERY_RESULT_BACKEND=redis://redis:6379/0
+# Cache do Django (rate limit de login e trava do ciclo macro). Banco separado
+# do broker de propósito.
+DJANGO_CACHE_URL=redis://redis:6379/1
 
-# Mercado Pago (Pagamentos)
+# --------------------------------------------
+# Mercado Pago (pagamentos)
+# --------------------------------------------
 MERCADOPAGO_ACCESS_TOKEN=COLOQUE_SEU_ACCESS_TOKEN
 MERCADOPAGO_PUBLIC_KEY=COLOQUE_SUA_PUBLIC_KEY
 MERCADOPAGO_CURRENCY=BRL
-MERCADOPAGO_BACK_URL=https://SEU_DOMINIO_OU_NGROK/pagamentos/retorno/
-MERCADOPAGO_WEBHOOK_URL=https://SEU_DOMINIO_OU_NGROK/pagamentos/webhook/
+MERCADOPAGO_BACK_URL=https://SEU_DOMINIO/pagamentos/retorno/
+MERCADOPAGO_WEBHOOK_URL=https://SEU_DOMINIO/pagamentos/webhook/
+# Sem este secret o webhook aceita qualquer requisição sem validar assinatura.
 MERCADOPAGO_WEBHOOK_SECRET=SEU_SECRET_DA_ASSINATURA_WEBHOOK
 MERCADOPAGO_TEST_PAYER_EMAIL=SEU_COMPRADOR_TESTE@email.com
 MERCADOPAGO_TRIAL_DAYS=7
@@ -35,7 +73,9 @@ MERCADOPAGO_PREMIUM_PLUS_SEMIANNUAL_PRICE=1000.00
 MERCADOPAGO_PREMIUM_PLUS_ANNUAL_PRICE=1800.00
 MERCADOPAGO_PREMIUM_PLUS_TEST_PRICE=5.00
 
+# --------------------------------------------
 # Discord
+# --------------------------------------------
 DISCORD_CLIENT_ID=SEU_CLIENT_ID
 DISCORD_CLIENT_SECRET=SEU_CLIENT_SECRET
 DISCORD_REDIRECT_URI=https://SEU_DOMINIO/discord/callback/
@@ -45,22 +85,47 @@ DISCORD_ROLE_BASIC_ID=SEU_ROLE_BASIC_ID
 DISCORD_ROLE_PREMIUM_ID=SEU_ROLE_PREMIUM_ID
 DISCORD_ROLE_PREMIUM_PLUS_ID=SEU_ROLE_PREMIUM_PLUS_ID
 
+# --------------------------------------------
+# Análise por IA (OpenAI)
+# --------------------------------------------
+OPENAI_API_KEY=SUA_CHAVE_OPENAI
+OPENAI_ANALYTICS_MODEL=gpt-4o-mini
+
+# --------------------------------------------
+# E-mail (recuperação de senha) - SMTP
+# --------------------------------------------
+DJANGO_EMAIL_HOST=smtpout.secureserver.net
+DJANGO_EMAIL_PORT=587
+DJANGO_EMAIL_USE_TLS=True
+DJANGO_EMAIL_HOST_USER=SEU_EMAIL
+DJANGO_EMAIL_HOST_PASSWORD=SUA_SENHA_DE_EMAIL
+DJANGO_DEFAULT_FROM_EMAIL=noreply@smclab.com.br
+
+# --------------------------------------------
+# Coleta macro (Playwright)
+# --------------------------------------------
+PLAYWRIGHT_TIMEOUT_MS=60000
+PLAYWRIGHT_WAIT_MS=2000
+
+# --------------------------------------------
 # Timezone
+# --------------------------------------------
 TZ=America/Sao_Paulo
+DJANGO_TIME_ZONE=America/Sao_Paulo
+DJANGO_LANGUAGE_CODE=pt-br
 
 # ============================================
-# INSTRUÇÕES:
+# INSTRUÇÕES
 # ============================================
-# 1. Gere a chave secreta com:
-#    python3 -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+# 1. Gere a chave secreta (não precisa do Django instalado no host):
+#    python3 -c "import secrets; print(secrets.token_urlsafe(50))"
 #
-# 2. Substitua SENHA_SUPER_SEGURA_AQUI por uma senha forte
-#    Use letras, números e caracteres especiais
-#    Exemplo: MinhaSenh@2024!Segura
+# 2. Substitua SENHA_SUPER_SEGURA_AQUI nos DOIS lugares (DATABASE_URL e
+#    POSTGRES_PASSWORD) pela mesma senha forte.
 #
-# 3. Substitua SEU_IP_LIGHTSAIL pelo IP estático da sua instância Lightsail
-#    Você encontra o IP na página da instância no Lightsail
+# 3. Substitua SEU_IP_LIGHTSAIL pelo IP estático da instância.
 #
-# 4. Se usar domínio, substitua smclab.com.br pelo seu domínio
+# 4. Não coloque colchetes, aspas ou espaços nos valores. O backup e os scripts
+#    leem este arquivo, e caracteres como ( ) $ " já quebraram o deploy antes.
 #
-# 5. NUNCA commite este arquivo com valores reais no Git!
+# 5. NUNCA commite este arquivo com valores reais no Git.

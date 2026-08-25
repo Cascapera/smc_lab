@@ -188,7 +188,20 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS: list[Path] = [BASE_DIR / "static"]
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+
+# O antigo `STATICFILES_STORAGE` foi removido no Django 5.1: ficava aqui sem
+# efeito nenhum, e o WhiteNoise servia sem manifest, sem compressão e sem
+# cache-busting — depois de um deploy, o browser continuava com o CSS/JS antigo.
+# O storage com manifest é definido em `prod.py`, para não exigir collectstatic
+# no ambiente de desenvolvimento.
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
 
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
@@ -390,6 +403,9 @@ MACRO_STRUCTURED_LOGGING = {
         },
     },
     "loggers": {
+        # `macro_file` (só ERROR) é acrescentado em prod.py. Sem ele aqui, estes
+        # loggers com `propagate: False` nunca chegavam ao handler de arquivo do
+        # logger pai `macro`, e o macro_errors.log ficava sempre vazio.
         "macro.tasks": {
             "handlers": ["macro_structured_console"],
             "level": env("MACRO_LOG_LEVEL", default="INFO"),
@@ -402,6 +418,15 @@ MACRO_STRUCTURED_LOGGING = {
         },
     },
 }
+
+
+def add_macro_file_handler(cfg):
+    """Acrescenta o handler de arquivo aos loggers do macro (usado em prod)."""
+    for nome in ("macro.tasks", "macro.services.collector"):
+        logger_cfg = cfg.get("loggers", {}).get(nome)
+        if logger_cfg and "macro_file" not in logger_cfg.get("handlers", []):
+            logger_cfg["handlers"] = [*logger_cfg["handlers"], "macro_file"]
+    return cfg
 
 
 def merge_macro_into_logging(cfg):
