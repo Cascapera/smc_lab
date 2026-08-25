@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 import logging
 
+import requests
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.db import transaction
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -170,6 +172,24 @@ class CreateCheckoutView(LoginRequiredMixin, View):
         return redirect(init_point)
 
 
+def _erro_e_transitorio(exc: Exception) -> bool:
+    """
+    Diz se vale a pena o Mercado Pago reenviar a notificacao.
+
+    Timeout, queda de conexao, 5xx e 429 sao instabilidade do lado deles: se
+    respondermos 200, o evento e descartado para sempre e o pagamento nunca
+    libera o plano - foi assim que ficou ate agora. Ja um 404 (id que nao existe)
+    e permanente: reenviar so gera ruido.
+    """
+    if isinstance(exc, (requests.ConnectionError, requests.Timeout)):
+        return True
+    if isinstance(exc, requests.HTTPError) and exc.response is not None:
+        codigo = exc.response.status_code
+        return codigo >= 500 or codigo == 429
+    # Erro que nao reconhecemos: preferimos que o MP tente de novo a perder o evento.
+    return not isinstance(exc, requests.HTTPError)
+
+
 class PaymentReturnView(LoginRequiredMixin, TemplateView):
     """
     Página que o usuário vê ao voltar do Mercado Pago.
@@ -245,6 +265,7 @@ class PaymentReturnView(LoginRequiredMixin, TemplateView):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
+@method_decorator(transaction.non_atomic_requests, name="dispatch")
 class MercadoPagoWebhookView(View):
     """
     Recebe as notificações do Mercado Pago.
@@ -297,6 +318,10 @@ class MercadoPagoWebhookView(View):
                 logger.exception(
                     "[payments] Erro ao buscar preapproval %s no webhook: %s", data_id, exc
                 )
+                if _erro_e_transitorio(exc):
+                    # 503 faz o Mercado Pago reenviar com backoff. Responder 200
+                    # aqui descartava o evento e o plano nunca era liberado.
+                    return HttpResponse(status=503)
                 return HttpResponse(status=200)
 
             preapproval_data.setdefault("id", data_id)
@@ -311,6 +336,8 @@ class MercadoPagoWebhookView(View):
             payment_data = fetch_payment(data_id)
         except Exception as exc:
             logger.exception("[payments] Erro ao buscar payment %s no webhook: %s", data_id, exc)
+            if _erro_e_transitorio(exc):
+                return HttpResponse(status=503)
             return HttpResponse(status=200)
 
         payment_data.setdefault("id", data_id)
