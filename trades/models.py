@@ -236,6 +236,14 @@ class Trade(models.Model):
         ordering = ("-executed_at", "-id")
         verbose_name = "trade"
         verbose_name_plural = "trades"
+        indexes = [
+            # Sustenta a ordenação padrão por usuário, usada no dashboard, nos
+            # relatórios e na análise. Só havia índice da FK, então cada consulta
+            # ordenava o conjunto do usuário em memória.
+            models.Index(fields=["user", "-executed_at"], name="trade_user_executed_idx"),
+            # Mural: públicos, mais recentes primeiro.
+            models.Index(fields=["is_public", "-executed_at"], name="trade_public_executed_idx"),
+        ]
 
     def __str__(self) -> str:
         return f"{self.symbol} ({self.get_direction_display()}) - {self.executed_at:%Y-%m-%d %H:%M}"

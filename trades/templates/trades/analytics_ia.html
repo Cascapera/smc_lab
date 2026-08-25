@@ -41,9 +41,51 @@
 </div>
 
 {% if ai_requested %}
-<div style="margin-bottom:1.5rem; padding:12px 16px; border-radius:8px; background:rgba(56,189,248,0.15); border:1px solid rgba(56,189,248,0.4); color:#e2e8f0;">
-  Análise solicitada. O resultado será exibido abaixo quando estiver pronto.
+<div id="ai-aviso" style="margin-bottom:1.5rem; padding:12px 16px; border-radius:8px; background:rgba(56,189,248,0.15); border:1px solid rgba(56,189,248,0.4); color:#e2e8f0;">
+  <span id="ai-aviso-texto">Gerando sua análise… esta página se atualiza sozinha quando ficar pronta.</span>
 </div>
+
+{# A análise roda em background: acompanhamos o estado e recarregamos quando terminar. #}
+<script>
+(function () {
+  var aviso = document.getElementById("ai-aviso");
+  var texto = document.getElementById("ai-aviso-texto");
+  if (!aviso) return;
+
+  var url = "{% url 'trades:analytics_ia_status' %}";
+  var tentativas = 0;
+  var LIMITE = 60;          // ~5 minutos: além disso algo está errado
+  var INTERVALO = 5000;
+
+  function verificar() {
+    tentativas += 1;
+    if (tentativas > LIMITE) {
+      texto.textContent = "A análise está demorando mais que o normal. Recarregue a página em alguns minutos.";
+      return;
+    }
+    fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (dados) {
+        if (!dados) { setTimeout(verificar, INTERVALO); return; }
+        if (dados.pronta) {
+          texto.textContent = "Análise pronta! Carregando…";
+          window.location = "{% url 'trades:analytics_ia' %}";
+          return;
+        }
+        if (dados.falhou) {
+          aviso.style.background = "rgba(248,113,113,0.15)";
+          aviso.style.borderColor = "rgba(248,113,113,0.4)";
+          texto.textContent = "Não foi possível gerar a análise agora. Tente novamente em alguns minutos.";
+          return;
+        }
+        setTimeout(verificar, INTERVALO);
+      })
+      .catch(function () { setTimeout(verificar, INTERVALO); });
+  }
+
+  setTimeout(verificar, INTERVALO);
+})();
+</script>
 {% endif %}
 
 <section style="margin-bottom:2rem;">
