@@ -404,6 +404,9 @@ DISCORD_ROLE_PREMIUM_PLUS_ID = env("DISCORD_ROLE_PREMIUM_PLUS_ID", default="")
 # Análise por IA (OpenAI GPT-4o mini)
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 OPENAI_ANALYTICS_MODEL = env("OPENAI_ANALYTICS_MODEL", default="gpt-4o-mini")
+# Minimo de trades para solicitar a analise por IA. Abaixo disso o relatorio sai
+# sem substancia, gasta uma chamada paga e queima a analise da semana do assinante.
+AI_ANALYSIS_MIN_TRADES = env.int("AI_ANALYSIS_MIN_TRADES", default=10)
 
 # --------------------------------------------------------------------------------------
 # Logging — fragmento para eventos JSON (macro observability)

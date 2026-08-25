@@ -8,7 +8,8 @@ Se --user não for informado, usa o primeiro usuário do banco.
 import random
 from decimal import Decimal
 
-from django.core.management.base import BaseCommand
+from django.conf import settings
+from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from accounts.models import User
@@ -37,10 +38,10 @@ def random_choice(choices):
 def get_user(identifier):
     """Retorna usuário por username, email ou ID."""
     if identifier is None:
-        return User.objects.order_by("id").first()
+        return None  # sem --user nao adivinhamos: antes pegava o primeiro id, que em producao e o fundador
     identifier = identifier.strip()
     if not identifier:
-        return User.objects.order_by("id").first()
+        return None  # sem --user nao adivinhamos: antes pegava o primeiro id, que em producao e o fundador
     if identifier.isdigit():
         return User.objects.filter(pk=int(identifier)).first()
     return (
@@ -137,6 +138,11 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
+            "--yes",
+            action="store_true",
+            help="Confirma a operacao destrutiva (necessario para apagar/resetar).",
+        )
+        parser.add_argument(
             "--user",
             type=str,
             default=None,
@@ -155,6 +161,13 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        # Comando de desenvolvimento: em producao apagava os trades reais do
+        # primeiro usuario (o fundador) e zerava o saldo dele para 10.000.
+        if not settings.DEBUG and not options.get("yes"):
+            raise CommandError(
+                "populate_trades e destrutivo e este ambiente nao esta em DEBUG. "
+                "Rode com --yes se for realmente intencional."
+            )
         user_ident = options.get("user")
         count = max(1, options.get("count", 40))
         no_reset = options.get("no_reset", False)
