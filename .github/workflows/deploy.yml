@@ -43,10 +43,18 @@ jobs:
             ${SSH_USER}@${SSH_HOST} "
             set -e
             cd ${DEPLOY_PATH:-~/app}
+            echo '>>> Buscando a versao nova'
+            git fetch origin main
+            # Atualiza o script de backup ANTES de executa-lo. Sem isto, uma
+            # correcao no backup_db.sh so teria efeito no deploy SEGUINTE, ja que
+            # o backup roda antes do reset. Pior: depois de um rollback o script
+            # volta para a versao antiga do servidor e o problema reaparece - foi
+            # exatamente o que travou dois deploys seguidos. Atualizar so este
+            # arquivo nao altera nada da aplicacao em execucao.
+            git checkout origin/main -- scripts/backup_db.sh
             echo '>>> Backup (DB + media)'
             bash scripts/backup_db.sh
-            echo '>>> Git pull'
-            git fetch origin main
+            echo '>>> Atualizando o codigo'
             git reset --hard origin/main
             echo '>>> Docker Compose build e up'
             docker compose pull
