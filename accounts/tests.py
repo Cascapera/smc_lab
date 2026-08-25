@@ -572,3 +572,68 @@ class CreateProfileSignalTest(TestCase):
         )
         self.assertTrue(Profile.objects.filter(user=user).exists())
         self.assertEqual(user.profile.user, user)
+
+
+# ---------------------------------------------------------------------------
+# Admin
+# ---------------------------------------------------------------------------
+
+
+class UserAdminTest(TestCase):
+    """
+    Testes do admin de usuários.
+
+    Regressão: `add_fieldsets` do Django 5.1+ inclui `usable_password`, campo que
+    só existe em `AdminUserCreationForm`. Com `UserCreationForm` como `add_form`,
+    a página de criação quebrava com FieldError e nenhum usuário podia ser criado
+    pelo admin.
+    """
+
+    def setUp(self):
+        self.admin = create_user(
+            email="admin@test.com",
+            is_staff=True,
+            is_superuser=True,
+        )
+        self.client.force_login(self.admin)
+
+    def test_pagina_de_adicionar_usuario_carrega(self):
+        response = self.client.get(reverse("admin:accounts_user_add"))
+        self.assertEqual(response.status_code, 200)
+
+    def test_formulario_de_adicao_pede_email(self):
+        """E-mail é obrigatório e único no modelo; precisa estar no formulário."""
+        response = self.client.get(reverse("admin:accounts_user_add"))
+        self.assertIn("email", response.context["adminform"].form.fields)
+
+    def test_cria_usuario_pelo_admin(self):
+        """
+        Regressão: o inline de Profile era renderizado na página de adição e o
+        formset tentava criar um segundo Profile (o signal já cria um), fazendo
+        a criação estourar IntegrityError mesmo com o formulário válido.
+        """
+        response = self.client.post(
+            reverse("admin:accounts_user_add"),
+            {
+                "username": "novo@test.com",
+                "email": "novo@test.com",
+                "usable_password": "true",
+                "password1": "SenhaForte123",
+                "password2": "SenhaForte123",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        user = User.objects.get(email="novo@test.com")
+        self.assertEqual(Profile.objects.filter(user=user).count(), 1)
+
+    def test_pagina_de_edicao_mostra_inline_de_profile(self):
+        """O inline some só na adição; na edição ele continua disponível."""
+        user = create_user(email="editar@test.com")
+        response = self.client.get(reverse("admin:accounts_user_change", args=[user.pk]))
+        self.assertEqual(response.status_code, 200)
+        prefixes = [fs.formset.prefix for fs in response.context["inline_admin_formsets"]]
+        self.assertIn("profile", prefixes)
+
+    def test_changelist_de_usuarios_carrega(self):
+        response = self.client.get(reverse("admin:accounts_user_changelist"))
+        self.assertEqual(response.status_code, 200)

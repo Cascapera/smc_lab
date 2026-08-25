@@ -612,3 +612,87 @@ class GlobalAnalyticsIAViewErrorHandlingTest(TestCase):
         self.assertEqual(response.status_code, 302)
         run = GlobalAIAnalyticsRun.objects.order_by("-requested_at").first()
         self.assertIn("Erro na geração do relatório", run.result)
+
+
+# ---------------------------------------------------------------------------
+# Open redirect (?next=)
+# ---------------------------------------------------------------------------
+
+
+class SafeNextUrlTest(TestCase):
+    """
+    Regressão: `next` vinha do usuário (query string, campo do form ou Referer)
+    e era usado direto no redirect, permitindo mandar o usuário para fora do
+    domínio depois de salvar/excluir um trade (open redirect → phishing).
+    """
+
+    def setUp(self):
+        self.user = create_user()
+        self.trade = create_trade(self.user, symbol="PETR4")
+        self.client.force_login(self.user)
+        self.dashboard = reverse("trades:dashboard")
+
+    def _edit_url(self, next_value):
+        base = reverse("trades:trade_edit", kwargs={"pk": self.trade.pk})
+        return f"{base}?next={next_value}"
+
+    def test_edicao_ignora_next_externo(self):
+        data = valid_trade_data(symbol="VALE3")
+        data["executed_at"] = self.trade.executed_at.strftime("%Y-%m-%dT%H:%M")
+        response = self.client.post(self._edit_url("https://evil.example/x"), data=data)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, self.dashboard)
+
+    def test_edicao_ignora_next_protocol_relative(self):
+        """//evil.example é interpretado pelo browser como outro host."""
+        data = valid_trade_data(symbol="VALE3")
+        data["executed_at"] = self.trade.executed_at.strftime("%Y-%m-%dT%H:%M")
+        response = self.client.post(self._edit_url("//evil.example/x"), data=data)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, self.dashboard)
+
+    def test_edicao_aceita_next_interno(self):
+        destino = reverse("trades:dashboard_advanced")
+        data = valid_trade_data(symbol="VALE3")
+        data["executed_at"] = self.trade.executed_at.strftime("%Y-%m-%dT%H:%M")
+        response = self.client.post(self._edit_url(destino), data=data)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, destino)
+
+    def test_delete_ignora_next_externo(self):
+        response = self.client.post(
+            reverse("trades:trade_delete", kwargs={"pk": self.trade.pk}),
+            data={"next": "https://evil.example/x"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, self.dashboard)
+
+    def test_delete_ignora_referer_externo(self):
+        response = self.client.post(
+            reverse("trades:trade_delete", kwargs={"pk": self.trade.pk}),
+            HTTP_REFERER="https://evil.example/x",
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, self.dashboard)
+
+    def test_delete_aceita_next_interno(self):
+        destino = reverse("trades:dashboard_advanced")
+        response = self.client.post(
+            reverse("trades:trade_delete", kwargs={"pk": self.trade.pk}),
+            data={"next": destino},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, destino)
+
+    def test_contexto_do_formulario_nao_propaga_next_externo(self):
+        """O template usa next_url como link 'voltar'; não pode apontar para fora."""
+        response = self.client.get(self._edit_url("https://evil.example/x"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["next_url"], self.dashboard)
+
+    def test_contexto_do_formulario_novo_ignora_referer_externo(self):
+        response = self.client.get(
+            reverse("trades:trade_add"), HTTP_REFERER="https://evil.example/x"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["next_url"], self.dashboard)

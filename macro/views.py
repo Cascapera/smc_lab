@@ -3,7 +3,7 @@ from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_GET
 from django.views.generic import TemplateView
 
-from accounts.mixins import PlanRequiredMixin
+from accounts.mixins import PlanRequiredMixin, plan_required_api
 from accounts.models import Plan
 from macro.models import MacroScore, MacroVariation
 
@@ -25,6 +25,7 @@ def _parse_since(request):
 
 
 @require_GET
+@plan_required_api(Plan.BASIC)
 def latest_scores(request):
     limit = _parse_limit(request, default=100)
     qs = MacroScore.objects.order_by("-measurement_time")[:limit]
@@ -40,6 +41,7 @@ def latest_scores(request):
 
 
 @require_GET
+@plan_required_api(Plan.BASIC)
 def latest_variations(request):
     limit = _parse_limit(request, default=200)
     since = _parse_since(request)
