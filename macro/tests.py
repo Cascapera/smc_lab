@@ -241,7 +241,12 @@ class ExecuteCycleTest(TestCase):
 
 
 class LatestScoresViewTest(TestCase):
-    """Testes da view latest_scores."""
+    """Testes da view latest_scores (exige plano Basic+)."""
+
+    def setUp(self):
+        self.user = create_user(email="scores-basic@test.com")
+        create_profile(self.user, plan=Plan.BASIC)
+        self.client.force_login(self.user)
 
     def test_retorna_200_com_results_vazio(self):
         response = self.client.get(reverse("macro:latest_scores"))
@@ -267,13 +272,37 @@ class LatestScoresViewTest(TestCase):
         data = response.json()
         self.assertIn("results", data)
 
-    def test_aceita_anonimo(self):
+    def test_anonimo_recebe_401(self):
+        """Dado do painel é produto pago: anônimo não acessa a API."""
+        self.client.logout()
         response = self.client.get(reverse("macro:latest_scores"))
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 401)
+        self.assertNotIn("results", response.json())
+
+    def test_usuario_free_recebe_403(self):
+        self.client.logout()
+        user_free = create_user(email="scores-free@test.com")
+        create_profile(user_free, plan=Plan.FREE)
+        self.client.force_login(user_free)
+        response = self.client.get(reverse("macro:latest_scores"))
+        self.assertEqual(response.status_code, 403)
+        self.assertNotIn("results", response.json())
+
+    def test_plano_expirado_recebe_403(self):
+        self.client.logout()
+        user_exp = create_user(email="scores-exp@test.com")
+        create_profile(
+            user_exp,
+            plan=Plan.PREMIUM,
+            plan_expires_at=timezone.now() - timezone.timedelta(days=1),
+        )
+        self.client.force_login(user_exp)
+        response = self.client.get(reverse("macro:latest_scores"))
+        self.assertEqual(response.status_code, 403)
 
 
 class LatestVariationsViewTest(TestCase):
-    """Testes da view latest_variations."""
+    """Testes da view latest_variations (exige plano Basic+)."""
 
     def setUp(self):
         self.asset = MacroAsset.objects.create(
@@ -282,6 +311,9 @@ class LatestVariationsViewTest(TestCase):
             value_base=0.5,
             source_key=SourceChoices.INVESTING,
         )
+        self.user = create_user(email="variations-basic@test.com")
+        create_profile(self.user, plan=Plan.BASIC)
+        self.client.force_login(self.user)
 
     def test_retorna_200_com_results_vazio(self):
         response = self.client.get(reverse("macro:latest_variations"))
@@ -320,6 +352,19 @@ class LatestVariationsViewTest(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()["results"]), 0)
+
+    def test_anonimo_recebe_401(self):
+        self.client.logout()
+        response = self.client.get(reverse("macro:latest_variations"))
+        self.assertEqual(response.status_code, 401)
+
+    def test_usuario_free_recebe_403(self):
+        self.client.logout()
+        user_free = create_user(email="variations-free@test.com")
+        create_profile(user_free, plan=Plan.FREE)
+        self.client.force_login(user_free)
+        response = self.client.get(reverse("macro:latest_variations"))
+        self.assertEqual(response.status_code, 403)
 
 
 class SMCDashboardViewTest(TestCase):

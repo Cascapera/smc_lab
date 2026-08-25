@@ -13,6 +13,7 @@ from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.safestring import mark_safe
 from django.views import View
 from django.views.generic import CreateView, TemplateView, UpdateView
@@ -45,6 +46,23 @@ from .models import (
     Trend,
     Trigger,
 )
+
+
+def _safe_next_url(request, candidate: str | None, fallback: str = "trades:dashboard") -> str:
+    """
+    Valida um destino vindo do usuário (?next=, campo next ou Referer).
+
+    Sem essa checagem, `?next=https://site-malicioso/` faz a aplicação redirecionar
+    para fora do domínio depois de salvar/excluir um trade (open redirect), o que
+    dá credibilidade a páginas de phishing. Só aceitamos destinos do próprio host.
+    """
+    if candidate and url_has_allowed_host_and_scheme(
+        url=candidate,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return candidate
+    return reverse(fallback)
 
 
 def _mural_display_name(trade: Trade) -> str:
@@ -88,10 +106,9 @@ class TradeCreateView(LoginRequiredMixin, CreateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["next_url"] = (
-            self.request.GET.get("next")
-            or self.request.META.get("HTTP_REFERER")
-            or reverse("trades:dashboard")
+        context["next_url"] = _safe_next_url(
+            self.request,
+            self.request.GET.get("next") or self.request.META.get("HTTP_REFERER"),
         )
         return context
 
@@ -124,15 +141,14 @@ class TradeUpdateView(LoginRequiredMixin, UpdateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["next_url"] = (
-            self.request.GET.get("next")
-            or self.request.META.get("HTTP_REFERER")
-            or reverse("trades:dashboard")
+        context["next_url"] = _safe_next_url(
+            self.request,
+            self.request.GET.get("next") or self.request.META.get("HTTP_REFERER"),
         )
         return context
 
     def get_success_url(self):
-        return self.request.GET.get("next") or reverse("trades:dashboard")
+        return _safe_next_url(self.request, self.request.GET.get("next"))
 
 
 class TradeDeleteView(LoginRequiredMixin, View):
@@ -140,8 +156,10 @@ class TradeDeleteView(LoginRequiredMixin, View):
         trade = get_object_or_404(Trade, pk=pk, user=request.user)
         trade.delete()
         messages.success(request, "Operação removida com sucesso!")
-        next_url = request.POST.get("next") or request.META.get("HTTP_REFERER")
-        return redirect(next_url or reverse("trades:dashboard"))
+        next_url = _safe_next_url(
+            request, request.POST.get("next") or request.META.get("HTTP_REFERER")
+        )
+        return redirect(next_url)
 
 
 class TradeScreenshotView(View):

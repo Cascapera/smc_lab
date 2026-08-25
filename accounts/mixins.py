@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from functools import wraps
+
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from django.http import JsonResponse
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils.safestring import mark_safe
@@ -66,6 +69,7 @@ def plan_required(required_plan: str = Plan.BASIC):
     """Decorator para views baseadas em função."""
 
     def decorator(view_func):
+        @wraps(view_func)
         def _wrapped_view(request, *args, **kwargs):
             if not request.user.is_authenticated:
                 # Respeita login_required padrão
@@ -82,6 +86,38 @@ def plan_required(required_plan: str = Plan.BASIC):
                 _get_insufficient_plan_message(),
             )
             return redirect(reverse("trades:dashboard"))
+
+        return _wrapped_view
+
+    return decorator
+
+
+def plan_required_api(required_plan: str = Plan.BASIC):
+    """
+    Mesma regra do `plan_required`, mas para endpoints JSON.
+
+    Views de API consumidas por fetch() não podem responder com redirect para
+    uma página HTML: o JS quebraria ao tentar interpretar a resposta. Aqui
+    devolvemos 401 (não autenticado) ou 403 (plano insuficiente).
+    """
+
+    def decorator(view_func):
+        @wraps(view_func)
+        def _wrapped_view(request, *args, **kwargs):
+            if not request.user.is_authenticated:
+                return JsonResponse(
+                    {"detail": "Autenticação necessária."},
+                    status=401,
+                )
+
+            profile = getattr(request.user, "profile", None)
+            if profile is None or not profile.has_plan_at_least(required_plan):
+                return JsonResponse(
+                    {"detail": "Recurso disponível apenas para assinantes."},
+                    status=403,
+                )
+
+            return view_func(request, *args, **kwargs)
 
         return _wrapped_view
 

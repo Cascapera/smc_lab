@@ -4,7 +4,7 @@ from django.utils.translation import gettext_lazy as _
 
 from trader_portal.admin_site import admin_site
 
-from .forms import CustomUserChangeForm, CustomUserCreationForm
+from .forms import AdminUserCreationForm, CustomUserChangeForm
 from .models import Profile, User
 
 
@@ -17,15 +17,39 @@ class ProfileInline(admin.StackedInline):
 
 @admin.register(User, site=admin_site)
 class UserAdmin(BaseUserAdmin):
-    add_form = CustomUserCreationForm
+    add_form = AdminUserCreationForm
     form = CustomUserChangeForm
     inlines = (ProfileInline,)
     fieldsets = BaseUserAdmin.fieldsets + ((_("Informações adicionais"), {"fields": ()}),)
-    add_fieldsets = BaseUserAdmin.add_fieldsets
+    # `email` é obrigatório e único no modelo User: sem ele no formulário de criação,
+    # o admin tentaria salvar com e-mail vazio e violaria a constraint no segundo usuário.
+    add_fieldsets = (
+        (
+            None,
+            {
+                "classes": ("wide",),
+                "fields": ("username", "email", "usable_password", "password1", "password2"),
+            },
+        ),
+    )
     list_display = ("username", "email", "first_name", "last_name", "is_staff")
     list_select_related = ("profile",)
     search_fields = ("username", "email", "first_name", "last_name")
     ordering = ("email",)
+
+    def get_inline_instances(self, request, obj=None):
+        """
+        Esconde o inline de Profile na página de adição.
+
+        O Profile é criado automaticamente pelo signal `create_or_update_profile`
+        quando o User é salvo. Se o inline aparecesse aqui, o formset tentaria
+        inserir um segundo Profile para o mesmo usuário e a criação falhava com
+        `IntegrityError: UNIQUE constraint failed: accounts_profile.user_id`.
+        Depois de criado, a página de edição mostra o inline normalmente.
+        """
+        if obj is None:
+            return []
+        return super().get_inline_instances(request, obj)
 
 
 @admin.register(Profile, site=admin_site)
