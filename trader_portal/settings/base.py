@@ -257,7 +257,20 @@ CELERY_BEAT_SCHEDULE = {
         "task": "accounts.tasks.downgrade_expired_plans",
         "schedule": crontab(minute=0, hour=5),
     },
+    # Limpeza das variacoes macro antigas. Roda as 03:30, antes da sincronizacao
+    # do Discord (04:00) e do downgrade de planos (05:00), e fora do horario de
+    # mercado, quando a coleta esta parada.
+    "macro-purge-variations-daily": {
+        "task": "macro.tasks.purge_old_macro_variations",
+        "schedule": crontab(minute=30, hour=3),
+        "options": {"expires": 3600},
+    },
 }
+
+# Por quantos dias guardar as variacoes individuais do painel macro.
+# O painel usa dados recentes; o historico de longo prazo vive em MacroScore,
+# que e pequeno e nao e apagado.
+MACRO_VARIATION_RETENTION_DAYS = env.int("MACRO_VARIATION_RETENTION_DAYS", default=90)
 
 # --------------------------------------------------------------------------------------
 # Mercado Pago (pagamentos)

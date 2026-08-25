@@ -3,11 +3,14 @@ Testes do app macro - utils, parsers, collector e views.
 """
 
 from datetime import datetime
+from io import StringIO
+from types import SimpleNamespace
 from unittest.mock import patch
 from urllib.parse import urlencode
 
 from django.conf import settings
 from django.core.cache import cache
+from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -16,10 +19,15 @@ from accounts.models import Plan
 from accounts.tests import create_profile, create_user
 
 from .models import MacroAsset, MacroScore, MacroVariation, SourceChoices
-from .services.collector import _compute_score_and_adjusted_variation, execute_cycle
+from .services.collector import (
+    _compute_score_and_adjusted_variation,
+    _last_known_variations,
+    execute_cycle,
+)
 from .services.parsers import parse_investing_variation, parse_tradingview_variation
+from .services.retention import purgar_variacoes_antigas
 from .services.utils import align_measurement_time, is_market_closed, parse_variation_percent
-from .tasks import CYCLE_LOCK_KEY, collect_macro_cycle
+from .tasks import CYCLE_LOCK_KEY, collect_macro_cycle, purge_old_macro_variations
 
 # ---------------------------------------------------------------------------
 # Utils
@@ -453,3 +461,222 @@ class CollectMacroCycleTest(TestCase):
         entrada = settings.CELERY_BEAT_SCHEDULE["macro-collect-every-5min"]
         self.assertIn("expires", entrada.get("options", {}))
         self.assertLessEqual(entrada["options"]["expires"], 300)
+
+
+# ---------------------------------------------------------------------------
+# Retenção e custo da consulta de fallback
+# ---------------------------------------------------------------------------
+
+
+class UltimaVariacaoConhecidaTest(TestCase):
+    """
+    Regressão de custo: a versão anterior carregava TODAS as linhas de
+    MacroVariation a cada ciclo, ordenava por (asset_id, -measurement_time) e
+    percorria tudo em Python para pegar uma por ativo. Em produção virou
+    1,39 milhão de linhas lidas a cada 5 minutos.
+    """
+
+    def setUp(self):
+        self.ativo_a = MacroAsset.objects.create(
+            name="Ativo A",
+            url="https://exemplo.com/a",
+            value_base=0.003,
+            source_key=SourceChoices.INVESTING,
+        )
+        self.ativo_b = MacroAsset.objects.create(
+            name="Ativo B",
+            url="https://exemplo.com/b",
+            value_base=0.003,
+            source_key=SourceChoices.INVESTING,
+        )
+
+    def _variacao(self, ativo, minutos_atras, decimal, texto="+0.5%"):
+        return MacroVariation.objects.create(
+            asset=ativo,
+            measurement_time=timezone.now() - timezone.timedelta(minutes=minutos_atras),
+            variation_text=texto,
+            variation_decimal=decimal,
+            status="ok",
+        )
+
+    def test_devolve_a_mais_recente_de_cada_ativo(self):
+        self._variacao(self.ativo_a, 60, 0.001, "+0.1%")
+        self._variacao(self.ativo_a, 5, 0.009, "+0.9%")
+        self._variacao(self.ativo_b, 10, 0.002, "+0.2%")
+
+        resultado = _last_known_variations([self.ativo_a, self.ativo_b])
+
+        self.assertEqual(resultado[self.ativo_a.id]["variation_decimal"], 0.009)
+        self.assertEqual(resultado[self.ativo_a.id]["variation_text"], "+0.9%")
+        self.assertEqual(resultado[self.ativo_b.id]["variation_decimal"], 0.002)
+
+    def test_ignora_linhas_sem_variacao(self):
+        self._variacao(self.ativo_a, 60, 0.001)
+        MacroVariation.objects.create(
+            asset=self.ativo_a,
+            measurement_time=timezone.now(),
+            variation_decimal=None,
+            status="no_data",
+        )
+        resultado = _last_known_variations([self.ativo_a])
+        self.assertEqual(resultado[self.ativo_a.id]["variation_decimal"], 0.001)
+
+    def test_ativo_sem_historico_fica_fora(self):
+        self.assertEqual(_last_known_variations([self.ativo_a]), {})
+
+    def test_lista_vazia(self):
+        self.assertEqual(_last_known_variations([]), {})
+
+    def test_usa_uma_query_independente_do_tamanho_da_tabela(self):
+        """O custo não pode crescer com o histórico."""
+        for i in range(1, 60):
+            self._variacao(self.ativo_a, i, 0.001 * i)
+            self._variacao(self.ativo_b, i, 0.002 * i)
+
+        with self.assertNumQueries(1):
+            resultado = _last_known_variations([self.ativo_a, self.ativo_b])
+        self.assertEqual(len(resultado), 2)
+
+
+class RetencaoDeVariacoesTest(TestCase):
+    """
+    `MacroVariation` nunca teve limpeza: chegou a 1913 MB e 1,39 M linhas em
+    produção, 87% do banco, e cada backup copiava tudo.
+    """
+
+    def setUp(self):
+        self.ativo = MacroAsset.objects.create(
+            name="Ativo",
+            url="https://exemplo.com",
+            value_base=0.003,
+            source_key=SourceChoices.INVESTING,
+        )
+
+    def _variacao(self, dias_atras):
+        return MacroVariation.objects.create(
+            asset=self.ativo,
+            measurement_time=timezone.now() - timezone.timedelta(days=dias_atras),
+            variation_text="+0.5%",
+            variation_decimal=0.005,
+            status="ok",
+        )
+
+    def test_remove_apenas_o_que_passou_do_corte(self):
+        self._variacao(dias_atras=120)
+        self._variacao(dias_atras=100)
+        recente = self._variacao(dias_atras=10)
+
+        resultado = purgar_variacoes_antigas(dias=90)
+
+        self.assertEqual(resultado["encontradas"], 2)
+        self.assertEqual(resultado["removidas"], 2)
+        self.assertEqual(list(MacroVariation.objects.all()), [recente])
+
+    def test_dry_run_nao_apaga_nada(self):
+        self._variacao(dias_atras=120)
+        resultado = purgar_variacoes_antigas(dias=90, dry_run=True)
+        self.assertEqual(resultado["encontradas"], 1)
+        self.assertEqual(resultado["removidas"], 0)
+        self.assertEqual(MacroVariation.objects.count(), 1)
+
+    def test_remove_em_lotes(self):
+        """Apagar tudo numa transação só trava a tabela e incha o WAL."""
+        for dia in range(100, 110):
+            self._variacao(dias_atras=dia)
+
+        resultado = purgar_variacoes_antigas(dias=90, tamanho_lote=3)
+
+        self.assertEqual(resultado["removidas"], 10)
+        self.assertEqual(resultado["lotes"], 4)  # 3+3+3+1
+        self.assertEqual(MacroVariation.objects.count(), 0)
+
+    def test_nao_apaga_o_historico_de_score(self):
+        """MacroScore alimenta o gráfico do painel e é pequeno; fica."""
+        MacroScore.objects.create(
+            measurement_time=timezone.now() - timezone.timedelta(days=200),
+            total_score=3,
+            variation_sum=0.02,
+        )
+        self._variacao(dias_atras=200)
+
+        purgar_variacoes_antigas(dias=90)
+
+        self.assertEqual(MacroScore.objects.count(), 1)
+        self.assertEqual(MacroVariation.objects.count(), 0)
+
+    def test_recusa_retencao_invalida(self):
+        with self.assertRaises(ValueError):
+            purgar_variacoes_antigas(dias=0)
+
+    def test_tabela_vazia_nao_quebra(self):
+        resultado = purgar_variacoes_antigas(dias=90)
+        self.assertEqual(resultado["removidas"], 0)
+
+    def test_comando_dry_run(self):
+        self._variacao(dias_atras=120)
+        saida = StringIO()
+        call_command("purge_macro_variations", "--dry-run", "--days", "90", stdout=saida)
+        self.assertIn("Simulação", saida.getvalue())
+        self.assertEqual(MacroVariation.objects.count(), 1)
+
+    def test_comando_apaga(self):
+        self._variacao(dias_atras=120)
+        saida = StringIO()
+        call_command("purge_macro_variations", "--days", "90", stdout=saida)
+        self.assertIn("Removidas", saida.getvalue())
+        self.assertEqual(MacroVariation.objects.count(), 0)
+
+    def test_task_diaria(self):
+        self._variacao(dias_atras=120)
+        resultado = purge_old_macro_variations.apply().get()
+        self.assertEqual(resultado["removidas"], 1)
+
+    def test_beat_tem_a_limpeza_agendada(self):
+        entrada = settings.CELERY_BEAT_SCHEDULE["macro-purge-variations-daily"]
+        self.assertEqual(entrada["task"], "macro.tasks.purge_old_macro_variations")
+
+
+class SourceExcerptTest(TestCase):
+    """
+    O `source_excerpt` guarda o HTML de onde não se conseguiu extrair a variação.
+    Gravá-lo também no sucesso era o que fazia a tabela crescer ~270 MB/mês.
+    """
+
+    def test_sucesso_nao_guarda_excerpt(self):
+        asset = MacroAsset.objects.create(
+            name="Teste OK",
+            url="https://exemplo.com",
+            value_base=0.003,
+            source_key=SourceChoices.INVESTING,
+        )
+        html = "<span data-test='instrument-price-change-percent'>+0.55%</span>" + ("x" * 5000)
+        with (
+            patch("macro.services.collector.fetch_html") as mock_fetch,
+            patch("macro.services.collector.is_market_closed", return_value=False),
+        ):
+            mock_fetch.return_value = SimpleNamespace(status="ok", html=html, block_reason="")
+            execute_cycle(timezone.now())
+
+        variacao = MacroVariation.objects.get(asset=asset)
+        self.assertEqual(variacao.status, "ok")
+        self.assertEqual(variacao.source_excerpt, "")
+
+    def test_falha_guarda_excerpt_para_diagnostico(self):
+        MacroAsset.objects.create(
+            name="Teste falha",
+            url="https://exemplo.com",
+            value_base=0.003,
+            source_key=SourceChoices.INVESTING,
+        )
+        with (
+            patch("macro.services.collector.fetch_html") as mock_fetch,
+            patch("macro.services.collector.is_market_closed", return_value=False),
+        ):
+            mock_fetch.return_value = SimpleNamespace(
+                status="blocked", html="<html>pagina de bloqueio</html>", block_reason="cloudflare"
+            )
+            execute_cycle(timezone.now())
+
+        variacao = MacroVariation.objects.first()
+        self.assertNotEqual(variacao.status, "ok")
+        self.assertNotEqual(variacao.source_excerpt, "")

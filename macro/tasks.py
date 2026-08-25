@@ -135,3 +135,34 @@ def collect_macro_cycle(self) -> None:
             cache.delete(CYCLE_LOCK_KEY)
         reset_correlation_id(token_correlation)
         reset_task_id(token_task)
+
+
+@shared_task
+def purge_old_macro_variations() -> dict:
+    """
+    Limpeza diária da tabela de variações.
+
+    `MacroVariation` nunca teve retenção: em produção chegou a 1913 MB e
+    1,39 milhão de linhas, 87% do banco, crescendo ~270 MB/mês. Cada backup
+    copiava tudo, levando o dump a 2,2 GB.
+
+    Sem autoretry: se falhar, o próximo agendamento tenta de novo. Reprocessar
+    uma deleção em lote não traz ganho e só prolongaria o bloqueio na tabela.
+    """
+    from macro.services.retention import purgar_variacoes_antigas
+
+    with Timer() as t:
+        resultado = purgar_variacoes_antigas()
+
+    log_event(
+        logger,
+        event="macro_retention_completed",
+        message="Retention finished",
+        status="success",
+        elapsed_ms=t.duration_ms,
+        found=resultado["encontradas"],
+        removed=resultado["removidas"],
+        batches=resultado["lotes"],
+        retention_days=resultado["dias"],
+    )
+    return resultado
