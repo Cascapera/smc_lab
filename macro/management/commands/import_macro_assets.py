@@ -33,7 +33,7 @@ class Command(BaseCommand):
             raise CommandError(f"Colunas ausentes na planilha: {missing}")
 
         if options["truncate"]:
-            MacroAsset.objects.all().delete()
+            MacroAsset.objects.all().update(active=False)
             self.stdout.write(self.style.WARNING("Tabela MacroAsset limpa."))
 
         created = 0

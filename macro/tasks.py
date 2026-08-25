@@ -4,7 +4,9 @@ from typing import Optional
 
 from celery import shared_task
 from django.core.cache import cache
+from django.db.utils import InterfaceError, OperationalError
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from macro.services import config
 from macro.services.collector import execute_cycle
@@ -34,13 +36,20 @@ CYCLE_LOCK_TIMEOUT_SECONDS = 1800  # 30 min
 
 @shared_task(
     bind=True,
-    autoretry_for=(Exception,),
+    # `Exception` refazia TODO o scraping (minutos de Playwright) por uma falha
+    # de banco na hora de gravar. Pior: cada tentativa recalculava
+    # `measurement_time = agora`, entao a retentativa gravava em outro bucket e
+    # o original ficava sem MacroScore - um buraco no grafico.
+    #
+    # Agora so erro transitorio de banco e retentado, e o bucket vem como
+    # argumento, para a retentativa gravar exatamente onde a primeira tentaria.
+    autoretry_for=(OperationalError, InterfaceError),
     retry_backoff=True,
     retry_backoff_max=300,
     retry_jitter=True,
-    max_retries=3,  # 3 tentativas, depois espera próximo agendamento do Beat
+    max_retries=3,
 )
-def collect_macro_cycle(self) -> None:
+def collect_macro_cycle(self, measurement_time_iso: Optional[str] = None) -> None:
     """Task Celery que dispara um ciclo de coleta."""
     task_id = getattr(self.request, "id", None)
     if task_id is not None:
@@ -79,9 +88,13 @@ def collect_macro_cycle(self) -> None:
             )
             return
 
-        measurement_time = align_measurement_time(
-            timezone.now(), interval_minutes=config.TARGET_INTERVAL_MINUTES
-        )
+        if measurement_time_iso:
+            # Retentativa: reusa o bucket da primeira tentativa.
+            measurement_time = parse_datetime(measurement_time_iso)
+        else:
+            measurement_time = align_measurement_time(
+                timezone.now(), interval_minutes=config.TARGET_INTERVAL_MINUTES
+            )
         with Timer() as ct:
             cycle_timer = ct
             log_event(
@@ -112,6 +125,9 @@ def collect_macro_cycle(self) -> None:
             step="collect_macro_cycle",
             level=logging.ERROR,
         )
+        # Passa o bucket adiante para a retentativa nao gravar em outro horario.
+        if measurement_time is not None and not self.request.args:
+            self.request.args = (measurement_time.isoformat(),)
         if self.request.retries < self.max_retries:
             log_event(
                 logger,
