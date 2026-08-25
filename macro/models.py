@@ -45,6 +45,13 @@ class MacroVariation(models.Model):
         indexes = [
             models.Index(fields=["measurement_time"]),
             models.Index(fields=["status"]),
+            # Sustenta a busca da última variação de cada ativo, feita a cada
+            # ciclo de coleta. Sem ele, o banco varria e ordenava a tabela
+            # inteira (1,39 M linhas em produção) para devolver ~32.
+            models.Index(
+                fields=["asset", "-measurement_time"],
+                name="macrovar_asset_time_idx",
+            ),
         ]
 
     def __str__(self) -> str:
