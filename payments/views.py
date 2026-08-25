@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timedelta
 
 from django.conf import settings
 from django.contrib import messages
@@ -11,15 +10,12 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.dateparse import parse_datetime
 from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import TemplateView
 
-from accounts.models import Profile
-
-from .models import PaymentStatus, Subscription, SubscriptionStatus
+from .models import Subscription, SubscriptionStatus
 from .services.mercadopago import (
     create_preapproval,
     create_preapproval_plan,
@@ -29,6 +25,7 @@ from .services.mercadopago import (
     fetch_preapproval,
     validate_webhook_signature,
 )
+from .services.plans import apply_payment_event, apply_preapproval_event
 
 logger = logging.getLogger(__name__)
 
@@ -174,53 +171,48 @@ class CreateCheckoutView(LoginRequiredMixin, View):
 
 
 class PaymentReturnView(LoginRequiredMixin, TemplateView):
+    """
+    Página que o usuário vê ao voltar do Mercado Pago.
+
+    Continua podendo liberar o plano (não dependemos de o webhook ter chegado
+    antes), mas agora com duas garantias que faltavam:
+
+      - só processa eventos do **próprio usuário logado**. Antes, o plano era
+        aplicado no `user_id` que vinha no pagamento, então dava para estender
+        ou revogar o plano de terceiros passando um `payment_id` alheio;
+      - passa pelo serviço idempotente, então recarregar a página não soma mais
+        outro período ao plano (antes, 12 F5 viravam 12 meses de graça).
+    """
+
     template_name = "payments/return.html"
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         status = self.request.GET.get("status") or "pending"
+        user_id = self.request.user.id
+
         preapproval_id = self.request.GET.get("preapproval_id") or self.request.GET.get("id")
-        fallback_subscription = None
         if not preapproval_id:
-            fallback_subscription = (
+            preapproval_id = (
                 Subscription.objects.filter(user=self.request.user)
                 .exclude(mp_preapproval_id="")
                 .order_by("-created_at")
+                .values_list("mp_preapproval_id", flat=True)
                 .first()
             )
-            if fallback_subscription:
-                preapproval_id = fallback_subscription.mp_preapproval_id
+
         if preapproval_id:
             try:
-                preapproval = fetch_preapproval(preapproval_id)
-                status = preapproval.get("status", status)
-                subscription = Subscription.objects.filter(mp_preapproval_id=preapproval_id).first()
-                if not subscription and fallback_subscription:
-                    subscription = fallback_subscription
-                if not subscription:
-                    external_reference = preapproval.get("external_reference", "")
-                    if external_reference:
-                        subscription = Subscription.objects.filter(
-                            external_reference=external_reference
-                        ).first()
-                if subscription:
-                    subscription.status = status
-                    subscription.raw_payload = preapproval
-                    subscription.save(update_fields=["status", "raw_payload", "updated_at"])
-                    if status == SubscriptionStatus.AUTHORIZED:
-                        _apply_plan(
-                            subscription.user.profile, subscription.plan_key, subscription.plan
-                        )
-                    elif status in {
-                        SubscriptionStatus.CANCELLED,
-                        SubscriptionStatus.PAUSED,
-                        SubscriptionStatus.EXPIRED,
-                    }:
-                        _schedule_plan_end(
-                            subscription.user.profile,
-                            preapproval,
-                            subscription.plan,
-                        )
+                preapproval_data = fetch_preapproval(preapproval_id)
+                preapproval_data.setdefault("id", preapproval_id)
+                status = preapproval_data.get("status") or status
+                result = apply_preapproval_event(preapproval_data, restrict_to_user_id=user_id)
+                logger.info(
+                    "[payments] Retorno: preapproval %s -> %s (user_id=%s)",
+                    preapproval_id,
+                    result,
+                    user_id,
+                )
             except Exception as exc:
                 logger.exception(
                     "[payments] Erro ao processar preapproval %s no retorno: %s",
@@ -231,20 +223,16 @@ class PaymentReturnView(LoginRequiredMixin, TemplateView):
         payment_id = extract_payment_id(self.request.GET, {})
         if payment_id:
             try:
-                payment = fetch_payment(payment_id)
-                payment_status = payment.get("status") or status
-                metadata = payment.get("metadata") or {}
-                user_id = metadata.get("user_id")
-                plan_key = metadata.get("plan_key")
-                plan = metadata.get("plan")
-                if payment_status == PaymentStatus.APPROVED and user_id and plan_key and plan:
-                    profile = Profile.objects.filter(user_id=user_id).first()
-                    if profile:
-                        _apply_plan(profile, plan_key, plan)
-                elif payment_status in {PaymentStatus.CHARGEDBACK, PaymentStatus.REFUNDED}:
-                    profile = Profile.objects.filter(user_id=user_id).first() if user_id else None
-                    if profile:
-                        _maybe_revoke_plan(profile)
+                payment_data = fetch_payment(payment_id)
+                payment_data.setdefault("id", payment_id)
+                status = payment_data.get("status") or status
+                result = apply_payment_event(payment_data, restrict_to_user_id=user_id)
+                logger.info(
+                    "[payments] Retorno: payment %s -> %s (user_id=%s)",
+                    payment_id,
+                    result,
+                    user_id,
+                )
             except Exception as exc:
                 logger.exception(
                     "[payments] Erro ao processar payment %s no retorno: %s",
@@ -258,6 +246,19 @@ class PaymentReturnView(LoginRequiredMixin, TemplateView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class MercadoPagoWebhookView(View):
+    """
+    Recebe as notificações do Mercado Pago.
+
+    O MP reenvia a mesma notificação várias vezes (e em paralelo) até receber um
+    200 rápido. Toda a aplicação de plano passa por `payments.services.plans`,
+    que garante que cada pagamento/assinatura só produza efeito uma vez.
+    """
+
+    # Topics conhecidos hoje. Os demais são logados em WARNING para sabermos
+    # exatamente o que a conta recebe antes de mapear os formatos novos
+    # (`subscription_preapproval`, `subscription_authorized_payment`).
+    KNOWN_TOPICS = {"preapproval", "payment"}
+
     def post(self, request: HttpRequest) -> HttpResponse:
         try:
             payload = json.loads(request.body.decode("utf-8")) if request.body else {}
@@ -272,200 +273,50 @@ class MercadoPagoWebhookView(View):
             if not validate_webhook_signature(x_signature, x_request_id, data_id, webhook_secret):
                 logger.warning("[payments] Webhook assinatura inválida, rejeitando.")
                 return HttpResponse(status=401)
+        elif not webhook_secret:
+            logger.warning(
+                "[payments] MERCADOPAGO_WEBHOOK_SECRET não configurado: "
+                "webhook aceito sem validar assinatura."
+            )
 
         topic = payload.get("type") or payload.get("topic") or request.GET.get("topic")
-        if topic == "preapproval":
-            preapproval_id = extract_payment_id(request.GET, payload)
-            if not preapproval_id:
-                return HttpResponse(status=200)
+        if topic not in self.KNOWN_TOPICS:
+            logger.warning(
+                "[payments] Webhook com topic desconhecido: %r (data_id=%s). "
+                "Tratando como pagamento.",
+                topic,
+                data_id,
+            )
 
+        if topic == "preapproval":
+            if not data_id:
+                return HttpResponse(status=200)
             try:
-                preapproval_data = fetch_preapproval(preapproval_id)
+                preapproval_data = fetch_preapproval(data_id)
             except Exception as exc:
                 logger.exception(
-                    "[payments] Erro ao buscar preapproval %s no webhook: %s",
-                    preapproval_id,
-                    exc,
+                    "[payments] Erro ao buscar preapproval %s no webhook: %s", data_id, exc
                 )
                 return HttpResponse(status=200)
 
-            status = preapproval_data.get("status", SubscriptionStatus.PENDING)
-            external_reference = preapproval_data.get("external_reference", "")
-            metadata = preapproval_data.get("metadata") or {}
-            user_id = metadata.get("user_id")
-            plan_key = metadata.get("plan_key")
-            plan = metadata.get("plan")
-
-            subscription = Subscription.objects.filter(mp_preapproval_id=preapproval_id).first()
-            if not subscription and external_reference:
-                subscription = Subscription.objects.filter(
-                    external_reference=external_reference
-                ).first()
-            if not subscription and user_id and plan_key and plan:
-                subscription = Subscription.objects.create(
-                    user_id=user_id,
-                    plan=plan,
-                    plan_key=plan_key,
-                    amount=preapproval_data.get("auto_recurring", {}).get("transaction_amount")
-                    or 0,
-                    currency=preapproval_data.get("auto_recurring", {}).get("currency_id")
-                    or settings.MERCADOPAGO_CURRENCY,
-                )
-
-            if subscription:
-                subscription.mp_preapproval_id = preapproval_id
-                subscription.status = status
-                subscription.raw_payload = preapproval_data
-                subscription.save(
-                    update_fields=["mp_preapproval_id", "status", "raw_payload", "updated_at"]
-                )
-
-                if status == SubscriptionStatus.AUTHORIZED:
-                    _apply_plan(subscription.user.profile, subscription.plan_key, subscription.plan)
-                elif status in {
-                    SubscriptionStatus.CANCELLED,
-                    SubscriptionStatus.PAUSED,
-                    SubscriptionStatus.EXPIRED,
-                }:
-                    _schedule_plan_end(
-                        subscription.user.profile,
-                        preapproval_data,
-                        subscription.plan,
-                    )
-
+            preapproval_data.setdefault("id", data_id)
+            result = apply_preapproval_event(preapproval_data)
+            logger.info("[payments] Webhook: preapproval %s -> %s", data_id, result)
             return HttpResponse(status=200)
 
-        payment_id = extract_payment_id(request.GET, payload)
-        if not payment_id:
+        if not data_id:
             return HttpResponse(status=200)
 
         try:
-            payment_data = fetch_payment(payment_id)
+            payment_data = fetch_payment(data_id)
         except Exception as exc:
-            logger.exception(
-                "[payments] Erro ao buscar payment %s no webhook: %s",
-                payment_id,
-                exc,
-            )
+            logger.exception("[payments] Erro ao buscar payment %s no webhook: %s", data_id, exc)
             return HttpResponse(status=200)
 
-        status = payment_data.get("status", PaymentStatus.PENDING)
-        external_reference = payment_data.get("external_reference", "")
-        metadata = payment_data.get("metadata") or {}
-        user_id = metadata.get("user_id")
-        plan_key = metadata.get("plan_key")
-        plan = metadata.get("plan")
-
-        subscription = None
-        if user_id and plan_key and plan:
-            subscription = Subscription.objects.filter(user_id=user_id, plan_key=plan_key).first()
-
-        if status == PaymentStatus.APPROVED:
-            if subscription:
-                _apply_plan(subscription.user.profile, subscription.plan_key, subscription.plan)
-            else:
-                # Pagamento one-time: não cria Subscription no checkout; aplicar direto do metadata
-                profile = Profile.objects.filter(user_id=user_id).first()
-                if profile:
-                    _apply_plan(profile, plan_key, plan)
-                    logger.info(
-                        "[payments] Plano aplicado via webhook (one-time) para user_id=%s: %s",
-                        user_id,
-                        plan_key,
-                    )
-        elif status in {PaymentStatus.CHARGEDBACK, PaymentStatus.REFUNDED}:
-            profile = Profile.objects.filter(user_id=user_id).first() if user_id else None
-            if subscription:
-                _maybe_revoke_plan(subscription.user.profile)
-            elif profile:
-                _maybe_revoke_plan(profile)
-
+        payment_data.setdefault("id", data_id)
+        result = apply_payment_event(payment_data)
+        logger.info("[payments] Webhook: payment %s -> %s", data_id, result)
         return HttpResponse(status=200)
-
-
-def _apply_plan(profile: Profile, plan_key: str, plan: str) -> None:
-    now = timezone.now()
-    start_at = (
-        profile.plan_expires_at
-        if profile.plan == plan and profile.plan_expires_at and profile.plan_expires_at > now
-        else now
-    )
-
-    profile.plan = plan
-    profile.plan_expires_at = start_at + timedelta(days=_get_plan_duration(plan_key))
-    profile.save(update_fields=["plan", "plan_expires_at"])
-    try:
-        from discord_integration.tasks import sync_user_roles
-
-        sync_user_roles.delay(profile.user_id)
-    except Exception as exc:
-        logger.debug("[payments] sync_user_roles não disponível: %s", exc)
-
-
-def _get_plan_duration(plan_key: str) -> int:
-    plan = settings.MERCADOPAGO_PLANS.get(plan_key, {})
-    return int(plan.get("duration_days", 30))
-
-
-def _maybe_revoke_plan(profile: Profile) -> None:
-    active = Subscription.objects.filter(
-        user=profile.user,
-        status=SubscriptionStatus.AUTHORIZED,
-    ).exists()
-    if active:
-        return
-
-    profile.plan = "free"
-    profile.plan_expires_at = None
-    profile.save(update_fields=["plan", "plan_expires_at"])
-    try:
-        from discord_integration.tasks import sync_user_roles
-
-        sync_user_roles.delay(profile.user_id)
-    except Exception as exc:
-        logger.debug("[payments] sync_user_roles não disponível: %s", exc)
-
-
-def _schedule_plan_end(
-    profile: Profile, preapproval_data: dict[str, object], plan: str | None = None
-) -> None:
-    next_payment_date = preapproval_data.get("next_payment_date")
-    if not next_payment_date:
-        auto_recurring = preapproval_data.get("auto_recurring") or {}
-        next_payment_date = auto_recurring.get("next_payment_date") or auto_recurring.get(
-            "end_date"
-        )
-
-    next_dt = _parse_mp_datetime(next_payment_date)
-    now = timezone.now()
-    if next_dt and next_dt > now:
-        update_fields: list[str] = []
-        if plan and profile.plan != plan:
-            profile.plan = plan
-            update_fields.append("plan")
-
-        if profile.plan_expires_at and profile.plan_expires_at > next_dt:
-            if update_fields:
-                profile.save(update_fields=update_fields)
-            return
-
-        profile.plan_expires_at = next_dt
-        update_fields.append("plan_expires_at")
-        profile.save(update_fields=update_fields)
-        return
-
-    _maybe_revoke_plan(profile)
-
-
-def _parse_mp_datetime(value: object | None) -> datetime | None:
-    if not value:
-        return None
-    if isinstance(value, str):
-        parsed = parse_datetime(value)
-        if parsed and timezone.is_naive(parsed):
-            return timezone.make_aware(parsed, timezone.get_current_timezone())
-        return parsed
-    return None
 
 
 def _ensure_preapproval_plan(plan_key: str, config: dict, currency: str, back_url: str) -> str:
