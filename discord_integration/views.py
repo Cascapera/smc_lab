@@ -79,7 +79,32 @@ class DiscordCallbackView(LoginRequiredMixin, View):
             messages.error(request, "Perfil não encontrado.")
             return redirect(reverse("accounts:profile"))
 
-        profile.discord_user_id = str(user_data.get("id", ""))
+        # Sem `id` não há vínculo: gravar string vazia com `discord_connected_at`
+        # preenchido deixava o perfil "conectado" a ninguém, e ainda faria a
+        # checagem de duplicidade abaixo casar com todas as contas sem Discord.
+        discord_id = str(user_data.get("id") or "").strip()
+        if not discord_id:
+            logger.error("[discord] Resposta de /users/@me sem id (user_id=%s).", request.user.id)
+            messages.error(request, "Erro ao conectar com o Discord. Tente novamente mais tarde.")
+            return redirect(reverse("accounts:profile"))
+
+        # Duas contas no mesmo Discord se anulam na sincronização diária: uma
+        # adiciona a role, a outra remove. Recusamos aqui, onde dá para explicar
+        # ao usuário, em vez de deixar a constraint estourar em 500.
+        if Profile.objects.filter(discord_user_id=discord_id).exclude(pk=profile.pk).exists():
+            logger.warning(
+                "[discord] Conta Discord %s já vinculada a outro usuário (tentativa: user_id=%s).",
+                discord_id,
+                request.user.id,
+            )
+            messages.error(
+                request,
+                "Esta conta do Discord já está vinculada a outro usuário do SMC Lab. "
+                "Desvincule-a na outra conta antes de conectar aqui.",
+            )
+            return redirect(reverse("accounts:profile"))
+
+        profile.discord_user_id = discord_id
         username = user_data.get("username", "")
         discriminator = user_data.get("discriminator")
         if discriminator and discriminator != "0":

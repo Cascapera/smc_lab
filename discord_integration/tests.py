@@ -312,3 +312,105 @@ class DiscordUnlinkViewTest(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse("accounts:profile"))
+
+
+# ---------------------------------------------------------------------------
+# Views - DiscordCallbackView: vínculo duplicado e resposta sem id (A6, A12)
+# ---------------------------------------------------------------------------
+
+
+class DiscordCallbackVinculoDuplicadoTest(TestCase):
+    """
+    Regressão de A6.
+
+    Duas contas no mesmo Discord se anulavam na sincronização das 04:00: uma
+    adicionava a role, a outra removia. O callback agora recusa o vínculo.
+    """
+
+    def setUp(self):
+        self.dono = create_user(email="dono@example.com")
+        dono_profile = self.dono.profile
+        dono_profile.discord_user_id = "discord_123"
+        dono_profile.discord_username = "dono"
+        dono_profile.save()
+
+        self.intruso = create_user(email="intruso@example.com")
+
+    def _callback(self, user_data):
+        self.client.force_login(self.intruso)
+        session = self.client.session
+        session["discord_oauth_state"] = "expected_state"
+        session.save()
+
+        with (
+            patch("discord_integration.views.exchange_code_for_token") as mock_exchange,
+            patch("discord_integration.views.fetch_discord_user") as mock_fetch,
+            patch("discord_integration.views.sync_profile_roles") as mock_sync,
+            patch("discord_integration.views.sync_user_roles") as mock_task,
+        ):
+            mock_exchange.return_value = {"access_token": "token"}
+            mock_fetch.return_value = user_data
+            response = self.client.get(
+                reverse("discord:callback") + "?state=expected_state&code=valid_code"
+            )
+        return response, mock_sync, mock_task
+
+    def test_discord_ja_vinculado_em_outra_conta_e_recusado(self):
+        response, mock_sync, mock_task = self._callback(
+            {"id": "discord_123", "username": "intruso", "discriminator": "0"}
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("accounts:profile"))
+
+        self.intruso.profile.refresh_from_db()
+        self.assertEqual(self.intruso.profile.discord_user_id, "")
+        self.assertIsNone(self.intruso.profile.discord_connected_at)
+        mock_sync.assert_not_called()
+        mock_task.delay.assert_not_called()
+
+    def test_dono_do_vinculo_continua_intacto(self):
+        self._callback({"id": "discord_123", "username": "intruso", "discriminator": "0"})
+
+        self.dono.profile.refresh_from_db()
+        self.assertEqual(self.dono.profile.discord_user_id, "discord_123")
+        self.assertEqual(self.dono.profile.discord_username, "dono")
+
+    def test_revincular_o_mesmo_discord_na_propria_conta_funciona(self):
+        """A checagem não pode impedir o usuário de reconectar a si mesmo."""
+        self.client.force_login(self.dono)
+        session = self.client.session
+        session["discord_oauth_state"] = "expected_state"
+        session.save()
+
+        with (
+            patch("discord_integration.views.exchange_code_for_token") as mock_exchange,
+            patch("discord_integration.views.fetch_discord_user") as mock_fetch,
+            patch("discord_integration.views.sync_profile_roles"),
+            patch("discord_integration.views.sync_user_roles"),
+        ):
+            mock_exchange.return_value = {"access_token": "token"}
+            mock_fetch.return_value = {
+                "id": "discord_123",
+                "username": "dono_novo_nick",
+                "discriminator": "0",
+            }
+            response = self.client.get(
+                reverse("discord:callback") + "?state=expected_state&code=valid_code"
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.dono.profile.refresh_from_db()
+        self.assertEqual(self.dono.profile.discord_username, "dono_novo_nick")
+
+    def test_resposta_sem_id_nao_grava_perfil_conectado(self):
+        """A12: `get("id", "")` deixava o perfil 'conectado' a ninguém."""
+        response, mock_sync, mock_task = self._callback(
+            {"username": "sem_id", "discriminator": "0"}
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.intruso.profile.refresh_from_db()
+        self.assertEqual(self.intruso.profile.discord_user_id, "")
+        self.assertIsNone(self.intruso.profile.discord_connected_at)
+        mock_sync.assert_not_called()
