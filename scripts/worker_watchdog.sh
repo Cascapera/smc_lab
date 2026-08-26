@@ -53,8 +53,10 @@ fi
 # -----------------------------------------------------------------------------
 # 2. O worker executou a task recentemente?
 # -----------------------------------------------------------------------------
-idade="$(docker compose exec -T worker python -c \
-  'from macro.tasks import idade_do_heartbeat_em_segundos as f; v = f(); print(v if v is not None else -1)' \
+# Management command, nao `python -c`: o one-liner precisava de django.setup()
+# para os models carregarem. Sem ele, o import levantava excecao, a saida vinha
+# vazia e o watchdog ficava inerte - foi o que aconteceu na primeira versao.
+idade="$(docker compose exec -T worker python manage.py worker_heartbeat \
   2>/dev/null | tr -d '\r' | tail -n 1)"
 
 # Sem resposta utilizável: pode ser container reiniciando ou erro de import.
