@@ -23,8 +23,33 @@ Quando perguntar passphrase, pressione Enter duas vezes. Gera `deploy_key` (priv
 | `SSH_HOST` | IP ou hostname do servidor |
 | `SSH_USER` | Usuário SSH (ex.: `ubuntu`) |
 | `SSH_PRIVATE_KEY` | Conteúdo completo de `deploy_key` |
+| `SSH_KNOWN_HOSTS` | Chave pública do servidor (ver abaixo) — **o deploy falha sem ela** |
 
 Opcional: `DEPLOY_PATH` (ex.: `~/app/smc_lab`)
+
+### `SSH_KNOWN_HOSTS`
+
+Sem este secret o workflow aceitava a chave que o host apresentasse na hora
+(`StrictHostKeyChecking=no` + `ssh-keyscan`), ou seja, entregava a chave privada
+de deploy para qualquer máquina que respondesse naquele endereço. Agora a chave
+esperada vem daqui e o `ssh` recusa o que não bater.
+
+Gere o valor numa máquina que já confia no servidor:
+
+```bash
+ssh-keyscan -t ed25519 <SSH_HOST>
+```
+
+Confira a impressão digital contra a do próprio servidor, por uma sessão SSH que
+você já sabe ser legítima:
+
+```bash
+ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+```
+
+Batendo, cole a saída inteira do `ssh-keyscan` no secret. Se o servidor for
+recriado, a chave muda e o secret precisa ser atualizado junto — o sintoma é o
+deploy falhar em `Host key verification failed`.
 
 ---
 

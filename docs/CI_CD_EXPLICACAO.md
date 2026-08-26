@@ -44,10 +44,16 @@ coverage html
 
 ## CD — Configuração
 
-**GitHub Secrets:** `SSH_HOST`, `SSH_USER`, `SSH_PRIVATE_KEY`, `DEPLOY_PATH` (opcional)
+**GitHub Secrets:** `SSH_HOST`, `SSH_USER`, `SSH_PRIVATE_KEY`, `SSH_KNOWN_HOSTS`, `DEPLOY_PATH` (opcional)
 
 **Servidor:** repo clonado, `.env` configurado, chave pública em `~/.ssh/authorized_keys`
 
-**Fluxo:** `git pull` → `docker compose build` → `docker compose up -d` → `migrate` → `collectstatic`
+**Disparo:** manual — Actions → Deploy → Run workflow. Não sobe sozinho a cada push na `main`.
+
+**Fluxo:** backup → `git reset --hard origin/main` → `docker compose build` → **`migrate` num container efêmero da imagem nova** → `up -d` → smoke test (gunicorn responde, seis serviços de pé, `/healthz`, heartbeat do worker) → imagens marcadas com o SHA
+
+O `migrate` vem **antes** do `up -d` de propósito: na ordem antiga o código novo
+conversava com o schema antigo por uns 15s em todo deploy. O `collectstatic` saiu
+do fluxo — o Dockerfile já o roda no build e falha se o manifest não sair.
 
 Detalhes: `docs/CD_CONFIGURACAO_PASSO_A_PASSO.md`
