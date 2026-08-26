@@ -454,7 +454,12 @@ class CollectMacroCycleTest(TestCase):
     @patch("macro.tasks.is_market_closed", return_value=False)
     def test_trava_e_liberada_mesmo_com_erro(self, _mock_closed, _mock_execute):
         """Se a trava vazasse num erro, a coleta pararia até o worker reiniciar."""
-        collect_macro_cycle.apply()
+        # A task re-levanta de propósito, para o Celery contar a tentativa. Com
+        # `CELERY_TASK_EAGER_PROPAGATION` (typo, sem o S) a exceção ficava presa
+        # no EagerResult e este teste passava sem exercitar o caminho de erro.
+        with self.assertRaises(RuntimeError):
+            collect_macro_cycle.apply()
+
         self.assertIsNone(cache.get(CYCLE_LOCK_KEY))
 
     @patch("macro.tasks.execute_cycle")
@@ -935,7 +940,9 @@ class HeartbeatDoWorkerTest(TestCase):
     @patch("macro.tasks.is_market_closed", return_value=False)
     def test_falha_na_coleta_ainda_conta_como_sinal_de_vida(self, _mock_closed, _mock_execute):
         """Coleta com erro ≠ worker travado. O watchdog só cuida do segundo."""
-        collect_macro_cycle.apply()
+        with self.assertRaises(RuntimeError):
+            collect_macro_cycle.apply()
+
         self.assertEqual(idade_do_heartbeat_em_segundos(), 0)
 
     @patch("macro.tasks.cache.set", side_effect=Exception("redis fora"))

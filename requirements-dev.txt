@@ -2,6 +2,11 @@
 # Instalar: pip install -r requirements-dev.txt
 -r requirements.txt
 
-ruff>=0.8.0
+ruff==0.15.2  # igual ao CI e ao .pre-commit-config.yaml
 coverage[toml]>=7.0.0
 pre-commit>=4.0.0
+
+# Diagnóstico e carga. Estavam no requirements.txt e iam junto para a imagem de
+# produção: o locust arrasta gevent, flask e msgpack para dentro dela.
+django-debug-toolbar==4.4.6
+locust==2.32.4

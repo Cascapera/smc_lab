@@ -68,7 +68,12 @@ MIDDLEWARE = [
     "trader_portal.middleware.RequestTimingMiddleware",
 ] + MIDDLEWARE  # noqa: F405
 
-LOGGING = add_macro_file_handler(  # noqa: F405
+# `macro_file` só entra se der para escrever no LOG_DIR (ver I19 no base.py).
+# Sem isso, um LOG_DIR não gravável faz o dictConfig estourar na inicialização
+# do processo — o site inteiro fora por causa de um arquivo de log secundário.
+_aplicar_macro_file = add_macro_file_handler if LOG_DIR_GRAVAVEL else (lambda cfg: cfg)  # noqa: F405
+
+LOGGING = _aplicar_macro_file(
     merge_macro_into_logging(  # noqa: F405
         {
             "version": 1,
@@ -83,14 +88,20 @@ LOGGING = add_macro_file_handler(  # noqa: F405
                     "class": "logging.StreamHandler",
                     "formatter": "verbose",
                 },
-                "macro_file": {
-                    "class": "logging.handlers.RotatingFileHandler",
-                    "formatter": "verbose",
-                    "filename": str(LOG_DIR / "macro_errors.log"),  # noqa: F405
-                    "maxBytes": 5 * 1024 * 1024,
-                    "backupCount": 5,
-                    "level": "ERROR",
-                },
+                **(
+                    {
+                        "macro_file": {
+                            "class": "logging.handlers.RotatingFileHandler",
+                            "formatter": "verbose",
+                            "filename": str(LOG_DIR / "macro_errors.log"),  # noqa: F405
+                            "maxBytes": 5 * 1024 * 1024,
+                            "backupCount": 5,
+                            "level": "ERROR",
+                        }
+                    }
+                    if LOG_DIR_GRAVAVEL  # noqa: F405
+                    else {}
+                ),
             },
             "root": {
                 "handlers": ["console"],
@@ -98,7 +109,7 @@ LOGGING = add_macro_file_handler(  # noqa: F405
             },
             "loggers": {
                 "macro": {
-                    "handlers": ["console", "macro_file"],
+                    "handlers": ["console", "macro_file"] if LOG_DIR_GRAVAVEL else ["console"],  # noqa: F405
                     "level": env("MACRO_LOG_LEVEL", default="INFO"),  # noqa: F405
                     "propagate": False,
                 }
@@ -106,3 +117,39 @@ LOGGING = add_macro_file_handler(  # noqa: F405
         }
     )
 )
+
+
+# --------------------------------------------------------------------------------------
+# Sentry (opcional)
+# --------------------------------------------------------------------------------------
+# Liga sozinho quando `SENTRY_DSN` aparecer no .env e os containers reiniciarem —
+# não precisa de deploy de código. Sem DSN, nada é inicializado: nenhuma
+# requisição de rede, nenhum hook, nenhum custo.
+#
+# `send_default_pii=False` é deliberado: o Sentry captura corpo de requisição e
+# dados de usuário quando ligado, e aqui trafegam e-mail, documento e telefone
+# de cliente. O que interessa para depurar é o stack trace.
+SENTRY_DSN = env("SENTRY_DSN", default="")  # noqa: F405
+
+if SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.celery import CeleryIntegration
+    from sentry_sdk.integrations.django import DjangoIntegration
+    from sentry_sdk.integrations.logging import LoggingIntegration
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[
+            DjangoIntegration(),
+            # Sem esta, erro dentro de task do Celery não chega ao Sentry — e é
+            # justamente onde ninguém está olhando quando acontece.
+            CeleryIntegration(),
+            LoggingIntegration(level=None, event_level="ERROR"),
+        ],
+        environment=env("SENTRY_ENVIRONMENT", default="production"),  # noqa: F405
+        release=env("GIT_SHA", default=""),  # noqa: F405
+        # Amostragem de performance desligada: o plano gratuito é pequeno e o
+        # que interessa agora é erro, não traço.
+        traces_sample_rate=0.0,
+        send_default_pii=False,
+    )

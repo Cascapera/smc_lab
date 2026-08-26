@@ -41,23 +41,16 @@ RUN test -s /app/staticfiles/staticfiles.json \
     || (echo "ERRO: staticfiles.json nao foi gerado; a imagem quebraria em runtime" && exit 1)
 
 # Segunda trava: importa os módulos carregados na inicialização do worker, do
-# gunicorn e das migrações.
+# gunicorn e das migrações, no Python desta imagem.
 #
-# O CI roda em Python 3.13 e esta imagem em 3.10 (Ubuntu 22.04). Código que usa
-# sintaxe ou símbolos de 3.11+ passa por toda a suíte e só quebra no servidor —
-# aconteceu com `from datetime import UTC`, que derrubou o worker em loop de
-# restart enquanto o site seguia no ar, escondendo a falha.
+# A lista vive em `scripts/check_runtime_imports.py`, usada também pelo CI. Ela
+# já esteve duplicada aqui e no `ci.yml`, e as duas cópias divergiram — a do CI
+# ficou sem os módulos do gunicorn. Uma lista só não diverge de si mesma.
 #
 # Importar aqui faz o build falhar em vez do worker.
 RUN DJANGO_SECRET_KEY=chave-apenas-para-o-build-nao-usada-em-runtime \
     DJANGO_ALLOWED_HOSTS=build.local \
     DATABASE_URL=sqlite:////tmp/build.sqlite3 \
-    python -c "\
-import django; django.setup(); \
-import macro.tasks, macro.services.network, macro.services.collector, macro.services.retention; \
-import trades.tasks, trades.services.analytics_ia; \
-import accounts.tasks, accounts.views, accounts.discord_links, discord_integration.tasks; \
-import payments.services.plans, payments.services.mercadopago; \
-print('imports de runtime: ok em', __import__('sys').version.split()[0])"
+    python scripts/check_runtime_imports.py
 
 CMD ["gunicorn", "trader_portal.wsgi:application", "-c", "gunicorn.conf.py", "--bind", "0.0.0.0:8000"]
