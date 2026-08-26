@@ -9,8 +9,14 @@ do decorator de rate limit e o POST de login responde 500.
 
 from __future__ import annotations
 
+from pathlib import Path
+from unittest.mock import patch
+
+from django.conf import settings
 from django.core.cache import caches
 from django.test import SimpleTestCase, override_settings
+
+from trader_portal.settings import base as base_settings
 
 # Porta sem nada escutando: simula o Redis indisponível.
 CACHE_MORTO = {
@@ -116,3 +122,111 @@ class ResilientManifestStorageTest(SimpleTestCase):
         storage = self._storage()
         storage.hashed_files = {"image/logo.png": "image/logo.abc123.png"}
         self.assertEqual(storage.stored_name("image/logo.png"), "image/logo.abc123.png")
+
+
+# ---------------------------------------------------------------------------
+# Settings do Celery que existem de verdade (I12)
+# ---------------------------------------------------------------------------
+
+
+class SettingsDoCeleryTest(SimpleTestCase):
+    """
+    Regressão de I12.
+
+    `CELERY_WORKER_GRACEFUL_TIMEOUT` não existe no Celery e ficou anos no
+    settings com um comentário afirmando que o worker esperava 5 minutos por
+    tarefa — não esperava. `CELERY_TASK_EAGER_PROPAGATION` (sem o S) era outro
+    nome inexistente, e esse tinha efeito colateral: exceção dentro de uma task
+    ficava presa no `EagerResult` e o teste passava com a task quebrada.
+
+    Este teste não confere dois nomes: confere *todos*, para que o próximo typo
+    apareça aqui e não em produção.
+    """
+
+    def test_toda_chave_celery_existe_no_celery(self):
+        from celery.app import defaults
+
+        desconhecidas = []
+        for nome in dir(settings):
+            if not nome.startswith("CELERY_"):
+                continue
+            opcao = nome[len("CELERY_") :].lower()
+            try:
+                defaults.find(opcao)
+            except KeyError:
+                # `find` levanta KeyError para nome inexistente, não devolve None.
+                desconhecidas.append(nome)
+
+        self.assertEqual(desconhecidas, [], f"Settings inexistentes no Celery: {desconhecidas}")
+
+    def test_eager_propagates_esta_escrito_certo(self):
+        """O nome com S é o que faz a exceção da task chegar ao teste."""
+        self.assertTrue(settings.CELERY_TASK_EAGER_PROPAGATES)
+        self.assertFalse(hasattr(settings, "CELERY_TASK_EAGER_PROPAGATION"))
+
+    def test_espera_do_worker_vem_do_compose_e_nao_do_settings(self):
+        self.assertFalse(hasattr(settings, "CELERY_WORKER_GRACEFUL_TIMEOUT"))
+
+
+# ---------------------------------------------------------------------------
+# Rate limit explícito, não derivado de sys.argv (I18)
+# ---------------------------------------------------------------------------
+
+
+class RateLimitEnableTest(SimpleTestCase):
+    """
+    Regressão de I18.
+
+    Era `RATELIMIT_ENABLE = "test" not in sys.argv`: qualquer comando com a
+    palavra `test` num argumento desligava a proteção — `manage.py loaddata
+    test.json`, por exemplo. E, como a suíte sempre caía nessa condição, o rate
+    limit nunca era exercitado por teste nenhum.
+    """
+
+    def test_desligado_explicitamente_na_suite(self):
+        self.assertFalse(settings.RATELIMIT_ENABLE)
+
+    def test_base_nao_olha_para_a_linha_de_comando(self):
+        fonte = (Path(settings.BASE_DIR) / "trader_portal" / "settings" / "base.py").read_text(
+            encoding="utf-8"
+        )
+        linha_do_setting = [
+            linha
+            for linha in fonte.splitlines()
+            if linha.startswith("RATELIMIT_ENABLE") and "=" in linha
+        ]
+        self.assertEqual(len(linha_do_setting), 1)
+        self.assertNotIn("sys.argv", linha_do_setting[0])
+
+
+# ---------------------------------------------------------------------------
+# LOG_DIR não derruba o processo (I19)
+# ---------------------------------------------------------------------------
+
+
+class PreparoDoLogDirTest(SimpleTestCase):
+    """
+    Regressão de I19.
+
+    O `LOG_DIR.mkdir()` estava solto no import do settings. Num filesystem
+    read-only — ou assim que o container deixar de rodar como root — o
+    `PermissionError` sobe antes de qualquer logger existir: gunicorn, celery e
+    todo `manage.py` morrem sem dizer por quê. Quem depende do diretório é só o
+    `macro_errors.log`, canal secundário do qual o console já tem cópia.
+    """
+
+    def test_sem_permissao_devolve_false_e_avisa(self):
+        with patch.object(Path, "mkdir", side_effect=PermissionError("read-only fs")):
+            with self.assertWarns(RuntimeWarning):
+                self.assertFalse(base_settings._preparar_log_dir())
+
+    def test_diretorio_nao_gravavel_devolve_false_e_avisa(self):
+        with (
+            patch.object(Path, "mkdir", return_value=None),
+            patch("trader_portal.settings.base.os.access", return_value=False),
+        ):
+            with self.assertWarns(RuntimeWarning):
+                self.assertFalse(base_settings._preparar_log_dir())
+
+    def test_caminho_normal_devolve_true(self):
+        self.assertTrue(base_settings._preparar_log_dir())

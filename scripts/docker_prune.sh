@@ -21,9 +21,16 @@ log() {
 
 log "Iniciando limpeza Docker..."
 
-# -f = não pedir confirmação
-# -a = incluir imagens não usadas
-docker system prune -a -f 2>&1 | tee -a "$LOG_FILE"
+# Sem `-a`, de propósito.
+#
+# `docker system prune -a` apaga TODA imagem sem container em execução — e a
+# base do Playwright (~2 GB) é uma delas. O build seguinte baixava tudo de
+# novo, transformando uma limpeza semanal em 2 GB de download no próximo
+# deploy. Sem `-a`, saem as imagens órfãs (dangling), que é o que enche o disco.
+docker system prune -f 2>&1 | tee -a "$LOG_FILE"
+
+# O cache do builder pode crescer bastante e não contém imagem base: aqui o
+# `-a` continua valendo.
 docker builder prune -a -f 2>&1 | tee -a "$LOG_FILE"
 
 log "Limpeza Docker concluída."

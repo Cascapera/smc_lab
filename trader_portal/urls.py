@@ -22,9 +22,14 @@ from django.urls import include, path
 from django.views.generic import RedirectView, TemplateView
 
 from trader_portal.admin_site import admin_site
+from trader_portal.health import healthz
 from trades.views import MuralView
 
 urlpatterns = [
+    # Saúde do sistema para monitor externo. Sem autenticação de propósito: quem
+    # consulta é um serviço de fora, e o corpo não expõe nada além de "está
+    # fresco ou não".
+    path("healthz", healthz, name="healthz"),
     path(
         "favicon.ico",
         RedirectView.as_view(url=static_url("image/fav.png"), permanent=True),

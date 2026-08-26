@@ -28,6 +28,6 @@ openai==1.55.3
 # Rate limiting (login, registro)
 django-ratelimit==4.1.0
 
-# Dev/diagnóstico: performance e teste de carga
-django-debug-toolbar==4.4.6
-locust==2.32.4
+# Observabilidade. Sem `SENTRY_DSN` no ambiente, o SDK nem é inicializado
+# (ver prod.py): fica no disco sem custo de runtime até alguém colar o DSN.
+sentry-sdk==2.68.1
