@@ -5,6 +5,7 @@ import secrets
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.db import transaction
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils import timezone
@@ -17,11 +18,33 @@ from .services import (
     exchange_code_for_token,
     fetch_discord_user,
     remove_all_roles,
-    sync_profile_roles,
 )
 from .tasks import sync_user_roles
 
 logger = logging.getLogger(__name__)
+
+
+def _enfileirar_sync_apos_commit(user_id: int) -> None:
+    """Enfileira a sincronização de roles depois que a transação fechar.
+
+    Duas razões para o `on_commit`: com `ATOMIC_REQUESTS` ligado, um `.delay()`
+    dentro da view faz o worker ler o estado anterior à gravação (foi o P6); e a
+    exceção do broker aqui dentro estouraria no commit, virando 500 numa
+    operação que já deu certo.
+    """
+
+    def _enfileirar() -> None:
+        try:
+            sync_user_roles.delay(user_id)
+        except Exception as exc:
+            logger.error(
+                "[discord] Falha ao enfileirar sync_user_roles (user_id=%s): %s",
+                user_id,
+                exc,
+                exc_info=True,
+            )
+
+    transaction.on_commit(_enfileirar)
 
 
 class DiscordLoginView(LoginRequiredMixin, View):
@@ -55,7 +78,9 @@ class DiscordCallbackView(LoginRequiredMixin, View):
     def get(self, request):
         state = request.GET.get("state")
         code = request.GET.get("code")
-        expected_state = request.session.get("discord_oauth_state")
+        # `pop`: o state é de uso único. Mantido na sessão, um callback antigo
+        # continuava válido enquanto a sessão durasse.
+        expected_state = request.session.pop("discord_oauth_state", None)
         if not state or state != expected_state:
             messages.error(request, "Falha na autenticação do Discord.")
             return redirect(reverse("accounts:profile"))
@@ -113,25 +138,10 @@ class DiscordCallbackView(LoginRequiredMixin, View):
         profile.discord_connected_at = timezone.now()
         profile.save(update_fields=["discord_user_id", "discord_username", "discord_connected_at"])
 
-        try:
-            sync_profile_roles(profile)
-        except Exception as exc:
-            logger.error(
-                "[discord] Falha ao sincronizar roles no callback (user_id=%s): %s",
-                request.user.id,
-                exc,
-                exc_info=True,
-            )
-
-        try:
-            sync_user_roles.delay(request.user.id)
-        except Exception as exc:
-            logger.error(
-                "[discord] Falha ao enfileirar sync_user_roles (user_id=%s): %s",
-                request.user.id,
-                exc,
-                exc_info=True,
-            )
+        # Antes havia `sync_profile_roles()` síncrono AQUI e o `.delay()` logo
+        # abaixo: o mesmo trabalho duas vezes, sendo que a versão síncrona fazia
+        # até 4 requisições de 20s ao Discord segurando um worker do gunicorn.
+        _enfileirar_sync_apos_commit(request.user.id)
 
         messages.success(request, "Discord conectado com sucesso!")
         return redirect(reverse("accounts:profile"))
@@ -160,15 +170,7 @@ class DiscordUnlinkView(LoginRequiredMixin, View):
         profile.discord_connected_at = None
         profile.save(update_fields=["discord_user_id", "discord_username", "discord_connected_at"])
 
-        try:
-            sync_user_roles.delay(request.user.id)
-        except Exception as exc:
-            logger.error(
-                "[discord] Falha ao enfileirar sync_user_roles no unlink (user_id=%s): %s",
-                request.user.id,
-                exc,
-                exc_info=True,
-            )
+        _enfileirar_sync_apos_commit(request.user.id)
 
         messages.success(request, "Discord desvinculado com sucesso.")
         return redirect(reverse("accounts:profile"))

@@ -241,6 +241,20 @@ CELERY_WORKER_GRACEFUL_TIMEOUT = 300
 # Tarefa re-enfileirada se worker morrer antes de concluir (evita perda de coleta)
 CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
+# Filas separadas (A9). Com um único worker `--pool=solo`, a sincronização do
+# Discord das 04:00 e a coleta macro disputavam o mesmo processo: enquanto a
+# sync varria os perfis, o painel macro parava de atualizar. O mesmo valia para
+# o e-mail de recuperação de senha, que passou a ser task no PR-4.1 e ficaria
+# atrás de um ciclo de coleta de ~150s.
+#
+# `celery` continua sendo a fila padrão (nada some se uma task nova não for
+# roteada aqui) e é consumida pelo mesmo worker da `macro`.
+CELERY_TASK_ROUTES = {
+    "macro.tasks.*": {"queue": "macro"},
+    "discord_integration.tasks.*": {"queue": "interativo"},
+    "accounts.tasks.send_password_reset_email": {"queue": "interativo"},
+}
+
 CELERY_BEAT_SCHEDULE = {
     "macro-collect-every-5min": {
         "task": "macro.tasks.collect_macro_cycle",

@@ -2,15 +2,25 @@
 Testes do app discord_integration - OAuth, services e views.
 """
 
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from accounts.models import Plan
 from accounts.tests import create_profile, create_user
+from trader_portal.celery import app as celery_app
 
-from .services import build_oauth_url, desired_role_for_plan, sync_profile_roles
+from .services import (
+    MAX_ESPERA_429_SEGUNDOS,
+    MAX_TENTATIVAS_429,
+    DiscordRateLimited,
+    _bot_request,
+    _discord_rate_limiter,
+    build_oauth_url,
+    desired_role_for_plan,
+    sync_profile_roles,
+)
 
 # ---------------------------------------------------------------------------
 # Services - build_oauth_url
@@ -241,10 +251,9 @@ class DiscordCallbackViewTest(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse("accounts:profile"))
 
-    @patch("discord_integration.views.sync_profile_roles")
     @patch("discord_integration.views.fetch_discord_user")
     @patch("discord_integration.views.exchange_code_for_token")
-    def test_callback_valido_salva_discord_no_perfil(self, mock_exchange, mock_fetch, mock_sync):
+    def test_callback_valido_salva_discord_no_perfil(self, mock_exchange, mock_fetch):
         mock_exchange.return_value = {"access_token": "token"}
         mock_fetch.return_value = {
             "id": "discord_123",
@@ -345,18 +354,18 @@ class DiscordCallbackVinculoDuplicadoTest(TestCase):
         with (
             patch("discord_integration.views.exchange_code_for_token") as mock_exchange,
             patch("discord_integration.views.fetch_discord_user") as mock_fetch,
-            patch("discord_integration.views.sync_profile_roles") as mock_sync,
             patch("discord_integration.views.sync_user_roles") as mock_task,
         ):
             mock_exchange.return_value = {"access_token": "token"}
             mock_fetch.return_value = user_data
-            response = self.client.get(
-                reverse("discord:callback") + "?state=expected_state&code=valid_code"
-            )
-        return response, mock_sync, mock_task
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self.client.get(
+                    reverse("discord:callback") + "?state=expected_state&code=valid_code"
+                )
+        return response, mock_task
 
     def test_discord_ja_vinculado_em_outra_conta_e_recusado(self):
-        response, mock_sync, mock_task = self._callback(
+        response, mock_task = self._callback(
             {"id": "discord_123", "username": "intruso", "discriminator": "0"}
         )
 
@@ -366,7 +375,6 @@ class DiscordCallbackVinculoDuplicadoTest(TestCase):
         self.intruso.profile.refresh_from_db()
         self.assertEqual(self.intruso.profile.discord_user_id, "")
         self.assertIsNone(self.intruso.profile.discord_connected_at)
-        mock_sync.assert_not_called()
         mock_task.delay.assert_not_called()
 
     def test_dono_do_vinculo_continua_intacto(self):
@@ -386,7 +394,6 @@ class DiscordCallbackVinculoDuplicadoTest(TestCase):
         with (
             patch("discord_integration.views.exchange_code_for_token") as mock_exchange,
             patch("discord_integration.views.fetch_discord_user") as mock_fetch,
-            patch("discord_integration.views.sync_profile_roles"),
             patch("discord_integration.views.sync_user_roles"),
         ):
             mock_exchange.return_value = {"access_token": "token"}
@@ -405,12 +412,225 @@ class DiscordCallbackVinculoDuplicadoTest(TestCase):
 
     def test_resposta_sem_id_nao_grava_perfil_conectado(self):
         """A12: `get("id", "")` deixava o perfil 'conectado' a ninguém."""
-        response, mock_sync, mock_task = self._callback(
-            {"username": "sem_id", "discriminator": "0"}
-        )
+        response, mock_task = self._callback({"username": "sem_id", "discriminator": "0"})
 
         self.assertEqual(response.status_code, 302)
         self.intruso.profile.refresh_from_db()
         self.assertEqual(self.intruso.profile.discord_user_id, "")
         self.assertIsNone(self.intruso.profile.discord_connected_at)
-        mock_sync.assert_not_called()
+        mock_task.delay.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _bot_request: teto de tentativas e de espera em 429 (A4, A9)
+# ---------------------------------------------------------------------------
+
+
+def _resposta(status_code: int, payload: dict | None = None):
+    resp = Mock()
+    resp.status_code = status_code
+    resp.ok = 200 <= status_code < 300
+    resp.json.return_value = payload if payload is not None else {}
+    resp.text = ""
+    return resp
+
+
+@patch("discord_integration.services._bot_headers", return_value={})
+class BotRequestRateLimitTest(TestCase):
+    """
+    Regressão de A4/A9.
+
+    Era um `while True` dormindo o `retry_after` do Discord sem teto. No
+    callback OAuth isso segurava um worker do gunicorn; no worker `--pool=solo`,
+    segurava a coleta macro junto.
+    """
+
+    def setUp(self):
+        # `_discord_rate_limiter` é singleton de módulo: sem zerar, as chamadas
+        # de um teste contam no limite de 10/s do seguinte e ele dorme sozinho.
+        _discord_rate_limiter._calls.clear()
+
+    @patch("discord_integration.services.time.sleep")
+    @patch("discord_integration.services.requests.request")
+    def test_desiste_depois_de_tres_tentativas(self, mock_request, mock_sleep, _headers):
+        mock_request.return_value = _resposta(429, {"retry_after": 30})
+
+        with self.assertRaises(DiscordRateLimited):
+            _bot_request("GET", "https://discord.com/api/teste")
+
+        self.assertEqual(mock_request.call_count, MAX_TENTATIVAS_429)
+
+    @patch("discord_integration.services.time.sleep")
+    @patch("discord_integration.services.requests.request")
+    def test_espera_e_limitada_mesmo_com_retry_after_alto(self, mock_request, mock_sleep, _headers):
+        """O Discord manda 30-60s em rate limit de guilda; dormir isso era o bug."""
+        mock_request.return_value = _resposta(429, {"retry_after": 300})
+
+        with self.assertRaises(DiscordRateLimited):
+            _bot_request("GET", "https://discord.com/api/teste")
+
+        esperas = [chamada.args[0] for chamada in mock_sleep.call_args_list]
+        self.assertTrue(esperas)
+        for espera in esperas:
+            self.assertLessEqual(espera, MAX_ESPERA_429_SEGUNDOS)
+
+    @patch("discord_integration.services.time.sleep")
+    @patch("discord_integration.services.requests.request")
+    def test_429_seguido_de_sucesso_retorna_a_resposta(self, mock_request, mock_sleep, _headers):
+        mock_request.side_effect = [_resposta(429, {"retry_after": 1}), _resposta(200)]
+
+        resp = _bot_request("GET", "https://discord.com/api/teste")
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(mock_request.call_count, 2)
+
+    @patch("discord_integration.services.time.sleep")
+    @patch("discord_integration.services.requests.request")
+    def test_resposta_normal_nao_dorme(self, mock_request, mock_sleep, _headers):
+        mock_request.return_value = _resposta(200)
+
+        _bot_request("GET", "https://discord.com/api/teste")
+
+        mock_sleep.assert_not_called()
+
+    @patch("discord_integration.services.time.sleep")
+    @patch("discord_integration.services.requests.request")
+    def test_corpo_ilegivel_no_429_nao_quebra(self, mock_request, mock_sleep, _headers):
+        resp_429 = _resposta(429)
+        resp_429.json.side_effect = ValueError("resposta sem JSON")
+        mock_request.side_effect = [resp_429, _resposta(200)]
+
+        resp = _bot_request("GET", "https://discord.com/api/teste")
+
+        self.assertEqual(resp.status_code, 200)
+
+
+# ---------------------------------------------------------------------------
+# Callback OAuth: nada de Discord dentro do request (A4, A12)
+# ---------------------------------------------------------------------------
+
+
+class DiscordCallbackForaDoRequestTest(TestCase):
+    """
+    Regressão de A4.
+
+    O callback chamava `sync_profile_roles()` síncrono (até 4 requisições de 20s
+    ao Discord) e, logo depois, enfileirava o mesmo trabalho.
+    """
+
+    def setUp(self):
+        self.user = create_user()
+
+    def _callback(self, executar_on_commit=True):
+        self.client.force_login(self.user)
+        session = self.client.session
+        session["discord_oauth_state"] = "expected_state"
+        session.save()
+
+        with (
+            patch("discord_integration.views.exchange_code_for_token") as mock_exchange,
+            patch("discord_integration.views.fetch_discord_user") as mock_fetch,
+            patch("discord_integration.views.sync_user_roles") as mock_task,
+        ):
+            mock_exchange.return_value = {"access_token": "token"}
+            mock_fetch.return_value = {
+                "id": "discord_777",
+                "username": "usuario",
+                "discriminator": "0",
+            }
+            with self.captureOnCommitCallbacks(execute=executar_on_commit):
+                response = self.client.get(
+                    reverse("discord:callback") + "?state=expected_state&code=valid_code"
+                )
+        return response, mock_task
+
+    def test_nao_fala_com_o_discord_dentro_do_request(self):
+        with patch("discord_integration.services._bot_request") as mock_bot:
+            response, _ = self._callback()
+
+        self.assertEqual(response.status_code, 302)
+        mock_bot.assert_not_called()
+
+    def test_enfileira_a_sincronizacao_uma_unica_vez(self):
+        _, mock_task = self._callback()
+
+        mock_task.delay.assert_called_once_with(self.user.id)
+
+    def test_enfileira_so_depois_do_commit(self):
+        """P6 de novo: `.delay()` dentro da transação faz o worker ler estado antigo."""
+        _, mock_task = self._callback(executar_on_commit=False)
+
+        mock_task.delay.assert_not_called()
+
+    def test_broker_fora_nao_derruba_a_vinculacao(self):
+        self.client.force_login(self.user)
+        session = self.client.session
+        session["discord_oauth_state"] = "expected_state"
+        session.save()
+
+        with (
+            patch("discord_integration.views.exchange_code_for_token") as mock_exchange,
+            patch("discord_integration.views.fetch_discord_user") as mock_fetch,
+            patch("discord_integration.views.sync_user_roles") as mock_task,
+        ):
+            mock_exchange.return_value = {"access_token": "token"}
+            mock_fetch.return_value = {"id": "discord_778", "username": "u", "discriminator": "0"}
+            mock_task.delay.side_effect = OSError("broker fora")
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self.client.get(
+                    reverse("discord:callback") + "?state=expected_state&code=valid_code"
+                )
+
+        self.assertEqual(response.status_code, 302)
+        self.user.profile.refresh_from_db()
+        self.assertEqual(self.user.profile.discord_user_id, "discord_778")
+
+    def test_state_e_removido_da_sessao(self):
+        """A12: mantido na sessão, um callback antigo seguia válido."""
+        self._callback()
+
+        self.assertNotIn("discord_oauth_state", self.client.session)
+
+    def test_state_nao_serve_duas_vezes(self):
+        self._callback()
+
+        response = self.client.get(
+            reverse("discord:callback") + "?state=expected_state&code=outro_code"
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("accounts:profile"))
+
+
+# ---------------------------------------------------------------------------
+# Filas separadas (A9)
+# ---------------------------------------------------------------------------
+
+
+class RoteamentoDeFilasTest(TestCase):
+    """
+    Regressão de A9.
+
+    Com uma fila só e `--pool=solo`, a sincronização das 04:00 e a coleta macro
+    disputavam o mesmo processo: o painel parava de atualizar durante a sync.
+    """
+
+    def _fila(self, nome_da_task: str) -> str:
+        destino = celery_app.amqp.router.route({}, nome_da_task)["queue"]
+        return getattr(destino, "name", destino)
+
+    def test_discord_vai_para_a_fila_interativa(self):
+        self.assertEqual(
+            self._fila("discord_integration.tasks.sync_all_discord_roles"), "interativo"
+        )
+        self.assertEqual(self._fila("discord_integration.tasks.sync_user_roles"), "interativo")
+
+    def test_coleta_macro_vai_para_a_fila_macro(self):
+        self.assertEqual(self._fila("macro.tasks.collect_macro_cycle"), "macro")
+
+    def test_email_de_recuperacao_nao_espera_a_coleta(self):
+        self.assertEqual(self._fila("accounts.tasks.send_password_reset_email"), "interativo")
+
+    def test_task_nao_roteada_continua_na_fila_padrao(self):
+        """Nada some se uma task nova não for listada em CELERY_TASK_ROUTES."""
+        self.assertEqual(self._fila("payments.tasks.qualquer_coisa"), "celery")
