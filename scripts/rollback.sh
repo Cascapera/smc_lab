@@ -35,8 +35,10 @@ if [ -z "$TARGET" ]; then
   echo ""
   echo "Versão rodando agora: ${current_sha} - ${current_msg}"
   echo ""
-  echo "Versões estáveis marcadas:"
-  git tag -l 'estavel-*' --sort=-creatordate | head -10 | sed 's/^/  /' || true
+  # `estavel-*` sozinho listava vazio: as tags de rollback viraram `faseN` na
+  # Fase 0 e ninguém percebeu, porque essa lista só é lida durante um incidente.
+  echo "Versões marcadas (mais recentes primeiro):"
+  git tag -l 'fase*' 'estavel-*' --sort=-creatordate | head -10 | sed 's/^/  /' || true
   echo ""
   echo "Últimos commits da main:"
   git log --oneline -10 origin/main 2>/dev/null | sed 's/^/  /' || true
@@ -80,11 +82,15 @@ bash "$SCRIPT_DIR/backup_db.sh" || {
 echo ">>> Voltando o código para ${TARGET}"
 git reset --hard "${TARGET}"
 
+# O `worker_interativo` subiu na Fase 4 e ficou de fora daqui: web, worker e
+# beat voltavam para a versão antiga e ele seguia com a imagem NOVA — roles do
+# Discord e e-mail de recuperação rodando exatamente o código que se acabou de
+# reverter. O `deploy.yml` e o `deploy.sh` já tinham sido corrigidos; este não.
 echo ">>> Rebuild das imagens"
-docker compose build web worker beat
+docker compose build web worker worker_interativo beat
 
-echo ">>> Parando worker e beat antes de recriar"
-docker compose stop worker beat || true
+echo ">>> Parando worker, worker_interativo e beat antes de recriar"
+docker compose stop worker worker_interativo beat || true
 
 echo ">>> Subindo containers"
 docker compose up -d
