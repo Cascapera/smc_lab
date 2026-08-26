@@ -43,6 +43,14 @@ class RateLimiter:
 
 _discord_rate_limiter = RateLimiter(max_calls=10, period_seconds=1.0)
 
+# Teto de tentativas e de espera em 429. Ver `_bot_request`.
+MAX_TENTATIVAS_429 = 3
+MAX_ESPERA_429_SEGUNDOS = 10.0
+
+
+class DiscordRateLimited(RuntimeError):
+    """429 do Discord que persistiu depois do teto de tentativas."""
+
 
 @dataclass
 class DiscordConfig:
@@ -120,19 +128,54 @@ def _bot_headers() -> dict[str, str]:
     return {"Authorization": f"Bot {config.bot_token}"}
 
 
+def _espera_apos_429(resp: requests.Response) -> float:
+    try:
+        payload = resp.json()
+        retry_after = float(payload.get("retry_after", 1)) + 0.5
+    except (ValueError, TypeError, json.JSONDecodeError):
+        retry_after = 5.0
+    # O Discord manda `retry_after` de 30-60s em rate limit de guilda. Dormir o
+    # que ele pedir, sem teto, era o que segurava o processo inteiro.
+    return min(max(retry_after, 0.0), MAX_ESPERA_429_SEGUNDOS)
+
+
 def _bot_request(method: str, url: str, **kwargs: Any) -> requests.Response:
-    while True:
+    """Requisição autenticada como bot, com teto de tentativas em 429.
+
+    Era um `while True` que dormia o `retry_after` do Discord indefinidamente.
+    Rodando no callback OAuth, isso segurava um worker do gunicorn — dois
+    usuários vinculando durante um 429 derrubavam o site. Rodando no worker
+    `--pool=solo`, segurava a coleta macro junto.
+
+    Estourado o teto, levanta: quem chamou registra e a sincronização daquele
+    perfil fica para a próxima rodada, que é o comportamento correto para uma
+    role de Discord.
+    """
+    for tentativa in range(1, MAX_TENTATIVAS_429 + 1):
         _discord_rate_limiter.wait()
         resp = requests.request(method, url, headers=_bot_headers(), timeout=20, **kwargs)
         if resp.status_code != 429:
             return resp
-        try:
-            payload = resp.json()
-            retry_after = float(payload.get("retry_after", 1)) + 0.5
-        except (ValueError, TypeError, json.JSONDecodeError):
-            retry_after = 5
-        logger.warning("[discord] Rate limit 429. Retry after: %s", retry_after)
-        time.sleep(retry_after)
+
+        if tentativa == MAX_TENTATIVAS_429:
+            logger.error(
+                "[discord] 429 persistente em %s %s após %d tentativas.",
+                method,
+                url,
+                MAX_TENTATIVAS_429,
+            )
+            raise DiscordRateLimited(f"Discord respondeu 429 em {method} {url}")
+
+        espera = _espera_apos_429(resp)
+        logger.warning(
+            "[discord] Rate limit 429 (tentativa %d/%d). Esperando %.1fs.",
+            tentativa,
+            MAX_TENTATIVAS_429,
+            espera,
+        )
+        time.sleep(espera)
+
+    raise DiscordRateLimited(f"Discord respondeu 429 em {method} {url}")  # pragma: no cover
 
 
 def add_role(discord_user_id: str, role_id: str) -> None:

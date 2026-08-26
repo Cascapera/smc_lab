@@ -49,7 +49,10 @@ services:
   worker:
     build: .
     restart: unless-stopped
-    command: celery -A trader_portal worker -l info --pool=solo --concurrency=1
+    # `-Q celery,macro`: a fila `celery` continua sendo o padrão, então tudo que
+    # não for roteado explicitamente cai aqui. A `interativo` fica no worker
+    # separado — ver o serviço abaixo.
+    command: celery -A trader_portal worker -l info --pool=solo --concurrency=1 -Q celery,macro
     environment: *django-env
     env_file: .env
     volumes:
@@ -61,6 +64,28 @@ services:
         condition: service_healthy
     # Tempo para o worker terminar a tarefa em andamento antes do SIGKILL (coleta pode levar minutos)
     stop_grace_period: 5m
+    logging: *default-logging
+
+  # Worker das tarefas curtas e voltadas ao usuário: roles do Discord e e-mail
+  # de recuperação de senha. Existe porque o worker principal roda `--pool=solo`
+  # com a coleta macro: um ciclo de ~150s a cada 5 min deixava a sincronização do
+  # Discord (e o e-mail de recuperação) esperando atrás dele.
+  worker_interativo:
+    build: .
+    restart: unless-stopped
+    command: celery -A trader_portal worker -l info --pool=solo --concurrency=1 -Q interativo
+    environment: *django-env
+    env_file: .env
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Menor que o do worker principal: aqui não roda coleta, e o teto de tempo
+    # das tasks do Discord é de 3 min (`time_limit`).
+    stop_grace_period: 3m
     logging: *default-logging
 
   beat:
