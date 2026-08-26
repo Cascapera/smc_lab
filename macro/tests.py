@@ -941,3 +941,41 @@ class HeartbeatDoWorkerTest(TestCase):
     @patch("macro.tasks.cache.set", side_effect=Exception("redis fora"))
     def test_falha_ao_gravar_nao_derruba_a_coleta(self, _mock_set):
         registrar_heartbeat()  # não deve levantar
+
+
+class ComandoWorkerHeartbeatTest(TestCase):
+    """
+    O watchdog lê a saída deste comando. A primeira versão usava
+    `python -c "from macro.tasks import ..."`, que falhava com
+    `AppRegistryNotReady` por não chamar `django.setup()`: a saída vinha vazia e
+    o watchdog ficava inerte — nunca reiniciava, nem quando devia.
+    """
+
+    def setUp(self):
+        cache.delete(HEARTBEAT_KEY)
+
+    def tearDown(self):
+        cache.delete(HEARTBEAT_KEY)
+
+    def _rodar(self):
+        saida = StringIO()
+        call_command("worker_heartbeat", stdout=saida)
+        return saida.getvalue().strip()
+
+    def test_sem_heartbeat_imprime_menos_um(self):
+        self.assertEqual(self._rodar(), "-1")
+
+    def test_com_heartbeat_imprime_a_idade(self):
+        registrar_heartbeat()
+        self.assertEqual(self._rodar(), "0")
+
+    def test_saida_e_sempre_um_numero_isolado(self):
+        """O watchdog faz match com ^-?[0-9]+$: qualquer texto extra o cega."""
+        registrar_heartbeat()
+        saida = self._rodar()
+        self.assertRegex(saida, r"^-?\d+$")
+
+    def test_heartbeat_antigo_imprime_idade_grande(self):
+        antigo = (timezone.now() - timezone.timedelta(minutes=30)).isoformat()
+        cache.set(HEARTBEAT_KEY, antigo, 3600)
+        self.assertGreater(int(self._rodar()), 1700)
