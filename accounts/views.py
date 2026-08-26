@@ -14,6 +14,7 @@ from django.views.generic import TemplateView
 from django_ratelimit.decorators import ratelimit
 
 from .forms import EmailAuthenticationForm, ProfileEditForm, ProfileForm, UserRegistrationForm
+from .ratelimit import client_ip_key
 
 User = get_user_model()
 
@@ -28,11 +29,16 @@ def _rate_limit_exceeded(request):
 
 
 @method_decorator(
-    ratelimit(key="ip", rate="5/m", method="POST", block=False),
+    ratelimit(key=client_ip_key, rate="5/m", method="POST", block=False),
     name="post",
 )
 class LoginView(DjangoLoginView):
-    """Login com rate limiting (5 tentativas/minuto por IP)."""
+    """Login com rate limiting (5 tentativas/minuto por IP real do cliente).
+
+    A chave vem de `client_ip_key`, e não do `key="ip"` do django-ratelimit:
+    atrás do nginx o `REMOTE_ADDR` é sempre o do proxy, o que tornava o limite
+    global — cinco tentativas bloqueavam o login de todos os usuários.
+    """
 
     template_name = "accounts/login.html"
     authentication_form = EmailAuthenticationForm
@@ -58,7 +64,7 @@ class RegisterView(View):
         )
 
     @method_decorator(
-        ratelimit(key="ip", rate="3/m", method="POST", block=False),
+        ratelimit(key=client_ip_key, rate="3/m", method="POST", block=False),
     )
     def post(self, request):
         if getattr(request, "limited", False):
