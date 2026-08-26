@@ -267,6 +267,13 @@ CELERY_BEAT_SCHEDULE = {
         # a tempo é descartada e esperamos o próximo agendamento.
         "options": {"expires": 240},
     },
+    # Sessões expiradas não somem sozinhas do banco. Roda antes da coleta do
+    # dia começar a pesar e depois da limpeza do macro.
+    "clear-expired-sessions-daily": {
+        "task": "accounts.tasks.clear_expired_sessions",
+        "schedule": crontab(minute=50, hour=3),
+        "options": {"expires": 3600},
+    },
     "discord-sync-daily": {
         "task": "discord_integration.tasks.sync_all_discord_roles",
         "schedule": crontab(minute=0, hour=4),

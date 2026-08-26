@@ -103,6 +103,10 @@ class RegisterView(View):
             for field, value in cleaned_data.items():
                 setattr(profile, field, value)
 
+            # `current_balance` saiu do formulário (é derivado). No cadastro
+            # não há trades, então ele começa igual ao saldo inicial.
+            profile.current_balance = profile.initial_balance
+
             now = timezone.now()
             if profile.terms_accepted:
                 profile.terms_accepted_at = now
@@ -164,12 +168,17 @@ class PasswordResetView(DjangoPasswordResetView):
 
 class LogoutView(View):
     """
-    Faz logout imediatamente (GET ou POST) e redireciona para a landing.
-    Evita a página padrão de confirmação do Django.
+    Logout só por POST, sem a página de confirmação do Django.
+
+    Aceitar GET permitia deslogar o usuário de qualquer site: bastava um
+    `<img src="https://.../accounts/logout/">` numa página que ele abrisse. Foi
+    por isso que o Django 5 removeu o logout por GET.
+
+    Um GET aqui não é erro do usuário — é link antigo ou favorito —, então
+    redireciona para a landing em vez de responder 405.
     """
 
     def get(self, request, *args, **kwargs):
-        logout(request)
         return redirect("landing")
 
     def post(self, request, *args, **kwargs):
