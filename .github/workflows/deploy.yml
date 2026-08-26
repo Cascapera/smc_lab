@@ -69,17 +69,25 @@ jobs:
           SSH_USER: ${{ secrets.SSH_USER }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
-          # O corpo do deploy vai por stdin (`bash -s`) com heredoc entre aspas:
-          # nada lá dentro é expandido pelo runner. Antes ele vivia dentro de uma
-          # string com aspas duplas, onde `${VAR}` era resolvido do lado errado —
-          # inclusive o `~/app` do default, que apontava para a home do runner e
-          # não a do servidor.
+          set -o pipefail
+          saida="$(mktemp)"
+          # O script é gravado num ARQUIVO no servidor e só então executado.
+          #
+          # Com `bash -s` ele chegava pelo stdin, e qualquer comando lá dentro
+          # que leia stdin engole o resto dele. Foi o que aconteceu na estreia
+          # deste workflow: o `docker compose run` do backup de media (sem `-T`)
+          # consumiu o restante do script, o bash chegou ao EOF e saiu com
+          # código 0. Deploy verde que parou no backup, sem subir nada — o site
+          # continuou no ar com a versão antiga e ninguém teria notado.
+          #
+          # Gravar em arquivo resolve a classe inteira: o `cat` consome o stdin
+          # de propósito, e o script roda depois, com stdin já em EOF.
           ssh -i ~/.ssh/deploy_key \
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
             "${SSH_USER}@${SSH_HOST}" \
-            "DEPLOY_PATH='${DEPLOY_PATH}' bash -s" <<'REMOTE'
+            "cat > /tmp/smc_deploy.sh && DEPLOY_PATH='${DEPLOY_PATH}' bash /tmp/smc_deploy.sh" <<'REMOTE' | tee "$saida"
           set -euo pipefail
 
           # O secret pode estar gravado com `~` no comeco. Entre aspas o bash nao
@@ -225,3 +233,10 @@ jobs:
 
           echo ">>> Deploy concluido: ${SHA_CURTO}"
           REMOTE
+
+          # Rede de segurança para a classe de falha acima: um script que para no
+          # meio sem erro não imprime o marcador final. Sem esta linha, o job
+          # ficaria verde de novo — foi assim que o primeiro deploy deste
+          # pipeline "passou" tendo feito só o backup.
+          grep -q '>>> Deploy concluido:' "$saida" \
+            || { echo "ERRO: o deploy terminou antes do fim do script."; exit 1; }
