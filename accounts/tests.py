@@ -5,9 +5,11 @@ Testes do app accounts - autenticação, perfis e registro.
 
 from datetime import timedelta
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.messages.middleware import MessageMiddleware
 from django.contrib.sessions.middleware import SessionMiddleware
+from django.core import mail
 from django.core.cache import cache
 from django.db import IntegrityError, connection, transaction
 from django.test import RequestFactory, TestCase, override_settings
@@ -25,6 +27,7 @@ from .models import (
     User,
 )
 from .ratelimit import real_client_ip
+from .tasks import send_password_reset_email
 
 # ---------------------------------------------------------------------------
 # Factories / Fixtures
@@ -856,3 +859,204 @@ class ResolveDuplicateDiscordLinksTest(TestCase):
             "discord_user_id", flat=True
         )
         self.assertEqual(sorted(restantes), ["discord_w"])
+
+
+# ---------------------------------------------------------------------------
+# E-mail sem depender da caixa (A2, A3)
+# ---------------------------------------------------------------------------
+
+
+DADOS_PERFIL_VALIDOS = {
+    "country": "Brasil",
+    "experience_level": ExperienceLevel.BEGINNER,
+    "primary_market": PrimaryMarket.INDEX_FUTURES,
+    "trading_style": TradingStyle.DAY_TRADE,
+    "terms_accepted": "on",
+    "privacy_accepted": "on",
+    "initial_balance": "0",
+    "current_balance": "0",
+}
+
+
+class RegistroComEmailEmOutraCaixaTest(TestCase):
+    """
+    Regressão de A2.
+
+    `validate_unique` comparava exato e o `.lower()` só acontecia no `save()`:
+    quem tentasse se cadastrar com `Joao@X.com`, existindo `joao@x.com`, tomava
+    um 500 (`IntegrityError`) em vez de uma mensagem de erro.
+    """
+
+    def setUp(self):
+        create_user(email="joao@x.com")
+
+    def test_form_recusa_email_existente_em_outra_caixa(self):
+        form = UserRegistrationForm(
+            data={
+                "email": "Joao@X.com",
+                "first_name": "João",
+                "last_name": "Silva",
+                "password1": "SenhaForte123",
+                "password2": "SenhaForte123",
+            }
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("email", form.errors)
+
+    def test_post_de_registro_nao_derruba_com_500(self):
+        response = self.client.post(
+            reverse("accounts:register"),
+            {
+                "email": "JOAO@x.com",
+                "first_name": "João",
+                "last_name": "Silva",
+                "password1": "SenhaForte123",
+                "password2": "SenhaForte123",
+                **DADOS_PERFIL_VALIDOS,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(User.objects.filter(email__iexact="joao@x.com").count(), 1)
+
+    def test_email_com_espacos_e_maiusculas_e_normalizado_no_cadastro(self):
+        form = UserRegistrationForm(
+            data={
+                "email": "  Maria@Exemplo.COM  ",
+                "first_name": "Maria",
+                "last_name": "Souza",
+                "password1": "SenhaForte123",
+                "password2": "SenhaForte123",
+            }
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        user = form.save()
+        self.assertEqual(user.email, "maria@exemplo.com")
+        self.assertEqual(user.username, "maria@exemplo.com")
+
+
+class LoginCaseInsensitiveTest(TestCase):
+    """
+    Regressão de A3.
+
+    O cadastro grava minúsculo, mas o login passava o valor cru ao backend:
+    `Joao@X.com` recebia 'credenciais inválidas' com a senha certa.
+    """
+
+    def setUp(self):
+        create_user(email="joao@x.com", password="SenhaForte123")
+
+    def test_form_normaliza_o_username(self):
+        form = EmailAuthenticationForm(
+            data={"username": "  Joao@X.com ", "password": "SenhaForte123"}
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data["username"], "joao@x.com")
+
+    def test_login_com_email_em_caixa_diferente_autentica(self):
+        response = self.client.post(
+            reverse("accounts:login"),
+            {"username": "Joao@X.com", "password": "SenhaForte123"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.wsgi_request.user.is_authenticated)
+
+
+# ---------------------------------------------------------------------------
+# Recuperação de senha: fila e rate limit (A8)
+# ---------------------------------------------------------------------------
+
+
+class PasswordResetEnvioAssincronoTest(TestCase):
+    """O SMTP sai do request; o corpo vai renderizado para a fila."""
+
+    def setUp(self):
+        create_user(email="quem-esqueceu@x.com")
+
+    def test_envio_e_enfileirado_e_nao_acontece_no_request(self):
+        with patch("accounts.forms.send_password_reset_email") as mock_task:
+            response = self.client.post(
+                reverse("accounts:password_reset"), {"email": "quem-esqueceu@x.com"}
+            )
+
+        self.assertEqual(response.status_code, 302)
+        mock_task.delay.assert_called_once()
+        # Nada foi para a caixa de saída dentro da requisição.
+        self.assertEqual(len(mail.outbox), 0)
+
+        _, body, _, to_email, _ = mock_task.delay.call_args[0]
+        self.assertEqual(to_email, "quem-esqueceu@x.com")
+        self.assertIn("recuperação de senha", body)
+
+    def test_broker_fora_cai_para_envio_sincrono(self):
+        """Redis fora não pode trancar o usuário fora da conta."""
+        with patch("accounts.forms.send_password_reset_email") as mock_task:
+            mock_task.delay.side_effect = OSError("broker indisponível")
+            response = self.client.post(
+                reverse("accounts:password_reset"), {"email": "quem-esqueceu@x.com"}
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["quem-esqueceu@x.com"])
+
+    def test_task_envia_o_email(self):
+        send_password_reset_email("Assunto", "Corpo", "de@x.com", "para@x.com")
+
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].subject, "Assunto")
+        self.assertEqual(mail.outbox[0].body, "Corpo")
+
+
+@override_settings(RATELIMIT_ENABLE=True)
+class PasswordResetRateLimitTest(TestCase):
+    """
+    Regressão de A8.
+
+    Sem limite, 500 POSTs viravam 500 e-mails na cota da GoDaddy — e a caixa de
+    quem nunca pediu recuperação.
+    """
+
+    def setUp(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+        create_user(email="alvo@x.com")
+        create_user(email="outro@x.com")
+
+    def _pedir_reset(self, email: str, ip: str):
+        with patch("accounts.forms.send_password_reset_email"):
+            return self.client.post(
+                reverse("accounts:password_reset"), {"email": email}, HTTP_X_REAL_IP=ip
+            )
+
+    def test_mesmo_email_repetido_e_bloqueado(self):
+        for _ in range(3):
+            self._pedir_reset("alvo@x.com", "203.0.113.30")
+
+        # IP novo a cada tentativa: só o balde por e-mail pode segurar.
+        response = self._pedir_reset("alvo@x.com", "198.51.100.44")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("accounts:password_reset"))
+
+    def test_ip_que_varre_emails_diferentes_e_bloqueado(self):
+        for i in range(5):
+            self._pedir_reset(f"varredura{i}@x.com", "203.0.113.31")
+
+        response = self._pedir_reset("outro@x.com", "203.0.113.31")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("accounts:password_reset"))
+
+    def test_usuario_legitimo_de_outro_ip_nao_e_afetado(self):
+        for i in range(5):
+            self._pedir_reset(f"varredura{i}@x.com", "203.0.113.31")
+
+        response = self._pedir_reset("outro@x.com", "198.51.100.45")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("accounts:password_reset_done"))

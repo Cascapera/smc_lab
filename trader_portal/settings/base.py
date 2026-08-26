@@ -145,6 +145,10 @@ EMAIL_BACKEND = env(
         else "django.core.mail.backends.console.EmailBackend"
     ),
 )
+# Sem timeout, uma conexão SMTP pendurada segura o worker do gunicorn até o
+# timeout dele. O envio virou task, mas o valor vale também para o fallback
+# síncrono e para qualquer outro e-mail enviado do request.
+EMAIL_TIMEOUT = env.int("DJANGO_EMAIL_TIMEOUT", default=10)
 DEFAULT_FROM_EMAIL = env("DJANGO_DEFAULT_FROM_EMAIL", default="noreply@smclab.com.br")
 SERVER_EMAIL = env("DJANGO_SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
 
