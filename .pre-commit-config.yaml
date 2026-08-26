@@ -11,7 +11,8 @@ repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.2
     hooks:
-      - id: ruff
+      # `ruff` virou alias legado a partir da 0.13; o id atual é `ruff-check`.
+      - id: ruff-check
       - id: ruff-format
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
