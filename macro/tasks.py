@@ -33,6 +33,42 @@ logger = logging.getLogger(__name__)
 CYCLE_LOCK_KEY = "macro:cycle_lock"
 CYCLE_LOCK_TIMEOUT_SECONDS = 1800  # 30 min
 
+# Sinal de vida do worker, lido pelo watchdog.
+#
+# O watchdog usava `celery inspect ping`, que com `--pool=solo` nunca responde:
+# ele reiniciava o worker a cada verificacao, incondicionalmente, dando 100% de
+# falso positivo. Um monitor que sempre reprova nao detecta travamento algum -
+# o travamento real ficaria indistinguivel do normal.
+#
+# Este carimbo mede o que importa: o worker esta consumindo tarefas? E gravado
+# no INICIO de toda execucao, inclusive quando o ciclo e pulado por mercado
+# fechado, porque nesse caso a task rodou - so nao coletou.
+HEARTBEAT_KEY = "macro:worker_heartbeat"
+HEARTBEAT_TTL_SECONDS = 3600
+
+
+def registrar_heartbeat() -> None:
+    """Marca que o worker executou a task agora."""
+    try:
+        cache.set(HEARTBEAT_KEY, timezone.now().isoformat(), HEARTBEAT_TTL_SECONDS)
+    except Exception as exc:  # noqa: BLE001 - heartbeat nao pode derrubar a coleta
+        logger.warning("[macro] Falha ao gravar heartbeat: %s", exc)
+
+
+def idade_do_heartbeat_em_segundos() -> Optional[int]:
+    """Ha quantos segundos o worker executou a task pela ultima vez."""
+    try:
+        marca = cache.get(HEARTBEAT_KEY)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[macro] Falha ao ler heartbeat: %s", exc)
+        return None
+    if not marca:
+        return None
+    momento = parse_datetime(marca)
+    if not momento:
+        return None
+    return int((timezone.now() - momento).total_seconds())
+
 
 @shared_task(
     bind=True,
@@ -65,6 +101,10 @@ def collect_macro_cycle(self, measurement_time_iso: Optional[str] = None) -> Non
     cycle_timer: Optional[Timer] = None
     lock_acquired = False
     try:
+        # Antes de qualquer decisao: se chegamos aqui, o worker esta vivo e
+        # consumindo. E o que o watchdog precisa saber.
+        registrar_heartbeat()
+
         if is_market_closed():
             log_event(
                 logger,

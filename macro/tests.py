@@ -28,7 +28,14 @@ from .services.network import _classify_playwright_error, _fetch_tradingview_pla
 from .services.parsers import parse_investing_variation, parse_tradingview_variation
 from .services.retention import purgar_variacoes_antigas
 from .services.utils import align_measurement_time, is_market_closed, parse_variation_percent
-from .tasks import CYCLE_LOCK_KEY, collect_macro_cycle, purge_old_macro_variations
+from .tasks import (
+    CYCLE_LOCK_KEY,
+    HEARTBEAT_KEY,
+    collect_macro_cycle,
+    idade_do_heartbeat_em_segundos,
+    purge_old_macro_variations,
+    registrar_heartbeat,
+)
 
 # ---------------------------------------------------------------------------
 # Utils
@@ -862,3 +869,75 @@ class TruncateNaoApagaHistoricoTest(TestCase):
         self.assertEqual(MacroVariation.objects.count(), 1, "historico foi apagado")
         asset.refresh_from_db()
         self.assertFalse(asset.active)
+
+
+# ---------------------------------------------------------------------------
+# Heartbeat do worker
+# ---------------------------------------------------------------------------
+
+
+class HeartbeatDoWorkerTest(TestCase):
+    """
+    O watchdog usava `celery inspect ping`, que com `--pool=solo` nunca
+    responde: ele reiniciava o worker a cada verificação, incondicionalmente.
+    Ficou registrado no log de produção — restarts às 17:00, 17:18, 17:36,
+    17:54, 18:00, 18:18...
+
+    O efeito não era perda de dado (o restart espera a tarefa terminar), mas
+    algo pior de outra forma: um monitor com 100% de falso positivo não detecta
+    travamento nenhum.
+    """
+
+    def setUp(self):
+        cache.delete(HEARTBEAT_KEY)
+        cache.delete(CYCLE_LOCK_KEY)
+
+    def tearDown(self):
+        cache.delete(HEARTBEAT_KEY)
+        cache.delete(CYCLE_LOCK_KEY)
+
+    def test_sem_execucao_a_idade_e_indefinida(self):
+        self.assertIsNone(idade_do_heartbeat_em_segundos())
+
+    def test_registrar_zera_a_idade(self):
+        registrar_heartbeat()
+        self.assertEqual(idade_do_heartbeat_em_segundos(), 0)
+
+    def test_idade_reflete_o_tempo_passado(self):
+        antigo = (timezone.now() - timezone.timedelta(minutes=20)).isoformat()
+        cache.set(HEARTBEAT_KEY, antigo, 3600)
+        idade = idade_do_heartbeat_em_segundos()
+        self.assertGreater(idade, 1100)
+        self.assertLess(idade, 1300)
+
+    def test_valor_corrompido_no_cache_nao_quebra(self):
+        cache.set(HEARTBEAT_KEY, "isso nao e uma data", 3600)
+        self.assertIsNone(idade_do_heartbeat_em_segundos())
+
+    @patch("macro.tasks.execute_cycle")
+    @patch("macro.tasks.is_market_closed", return_value=False)
+    def test_ciclo_normal_grava_heartbeat(self, _mock_closed, _mock_execute):
+        collect_macro_cycle.apply()
+        self.assertEqual(idade_do_heartbeat_em_segundos(), 0)
+
+    @patch("macro.tasks.execute_cycle")
+    @patch("macro.tasks.is_market_closed", return_value=True)
+    def test_mercado_fechado_tambem_grava(self, _mock_closed, _mock_execute):
+        """
+        A task rodou — só não coletou. Para o watchdog, isso é sinal de vida:
+        sem gravar aqui, uma noite inteira de mercado fechado pareceria
+        travamento e o worker seria reiniciado à toa.
+        """
+        collect_macro_cycle.apply()
+        self.assertEqual(idade_do_heartbeat_em_segundos(), 0)
+
+    @patch("macro.tasks.execute_cycle", side_effect=RuntimeError("coleta falhou"))
+    @patch("macro.tasks.is_market_closed", return_value=False)
+    def test_falha_na_coleta_ainda_conta_como_sinal_de_vida(self, _mock_closed, _mock_execute):
+        """Coleta com erro ≠ worker travado. O watchdog só cuida do segundo."""
+        collect_macro_cycle.apply()
+        self.assertEqual(idade_do_heartbeat_em_segundos(), 0)
+
+    @patch("macro.tasks.cache.set", side_effect=Exception("redis fora"))
+    def test_falha_ao_gravar_nao_derruba_a_coleta(self, _mock_set):
+        registrar_heartbeat()  # não deve levantar
