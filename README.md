@@ -200,9 +200,9 @@ See `.env.example` for local dev; `docs/env_production_template.txt` for product
 ## 1️⃣1️⃣ Deployment
 
 - **Environment** — AWS Lightsail; Docker-enabled instance
-- **Docker** — `docker compose` with services: web (Gunicorn), worker, beat, Redis, PostgreSQL
-- **Process** — `scripts/deploy.sh`: `git pull` → `docker compose up -d --build` → `migrate` → `collectstatic`
-- **CI/CD** — Deploy via GitHub Actions (SSH) after push to `main`; secrets: `SSH_HOST`, `SSH_USER`, `SSH_PRIVATE_KEY`
+- **Docker** — `docker compose` with services: web (Gunicorn), worker, worker_interativo, beat, Redis, PostgreSQL
+- **Process** — backup → `git reset --hard origin/main` → build → `migrate` (throwaway container, new image) → `up -d` → smoke test. Manual fallback: `scripts/deploy.sh`
+- **CI/CD** — Deploy via GitHub Actions (SSH), triggered manually from the Actions tab; secrets: `SSH_HOST`, `SSH_USER`, `SSH_PRIVATE_KEY`, `SSH_KNOWN_HOSTS`
 - **Variables** — `.env` on the server; never committed
 - **Worker Watchdog** — Cron script that restarts the Celery worker if it stops; `scripts/install_worker_watchdog.sh`
 - **Worker restart** — 3×/day (06:04, 13:04, 22:04) to clear orphan processes; `logs/worker_restart_daily.log`
