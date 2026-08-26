@@ -80,7 +80,10 @@ fi
 # -----------------------------------------------------------------------------
 if [ "$BACKUP_MEDIA" = "1" ]; then
   media_file="$BACKUP_DIR/media_${timestamp}.tar.gz"
-  docker compose run --rm -v "$BACKUP_DIR:/backup" web \
+  # `-T` não é cosmético: sem ele o `run` anexa o stdin do processo pai. Quando
+  # este script é chamado de um deploy cujo próprio texto chega pelo stdin, o
+  # `tar` consome o resto do script e o deploy termina em silêncio, com código 0.
+  docker compose run --rm -T -v "$BACKUP_DIR:/backup" web \
     tar czf "/backup/media_${timestamp}.tar.gz" -C /app media 2>/dev/null || true
   if [ -f "$media_file" ]; then
     echo "Backup media salvo: $media_file"
