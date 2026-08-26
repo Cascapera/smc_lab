@@ -148,6 +148,10 @@ class ProfileForm(forms.ModelForm):
             "last_reset_at",
             "created_at",
             "updated_at",
+            # Derivado dos trades: o valor digitado aqui era descartado no
+            # primeiro trade seguinte (ver `trades.signals`).
+            "current_balance",
+            "current_session_key",
             # Discord é preenchido ao vincular a conta depois do cadastro
             "discord_user_id",
             "discord_username",
@@ -182,6 +186,9 @@ class ProfileEditForm(forms.ModelForm):
             "last_reset_at",
             "created_at",
             "updated_at",
+            # Derivado dos trades; ver ProfileForm.
+            "current_balance",
+            "current_session_key",
             # Discord é preenchido pela integração, não editável pelo usuário
             "discord_user_id",
             "discord_username",
@@ -200,6 +207,17 @@ class ProfileEditForm(forms.ModelForm):
 
     def clean_timezone(self) -> str:
         return self.cleaned_data.get("timezone") or "America/Sao_Paulo"
+
+    def save(self, commit: bool = True):
+        profile = super().save(commit=commit)
+        if commit and "initial_balance" in self.changed_data:
+            # Mudar o saldo inicial sem recalcular deixava o painel mostrando o
+            # acumulado antigo até o próximo trade — que podia não vir nunca.
+            from trades.signals import recalculate_profile_balance
+
+            recalculate_profile_balance(profile.user)
+            profile.refresh_from_db()
+        return profile
 
 
 class AsyncPasswordResetForm(PasswordResetForm):

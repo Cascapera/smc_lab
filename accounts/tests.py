@@ -7,12 +7,14 @@ from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
+from django.contrib.auth.models import Permission
 from django.contrib.messages.middleware import MessageMiddleware
 from django.contrib.sessions.middleware import SessionMiddleware
+from django.contrib.sessions.models import Session
 from django.core import mail
 from django.core.cache import cache
 from django.db import IntegrityError, connection, transaction
-from django.test import RequestFactory, TestCase, override_settings
+from django.test import Client, RequestFactory, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -27,7 +29,7 @@ from .models import (
     User,
 )
 from .ratelimit import real_client_ip
-from .tasks import send_password_reset_email
+from .tasks import clear_expired_sessions, downgrade_expired_plans, send_password_reset_email
 
 # ---------------------------------------------------------------------------
 # Factories / Fixtures
@@ -364,13 +366,22 @@ class RegisterViewTest(TestCase):
 class LogoutViewTest(TestCase):
     """Testes da LogoutView."""
 
-    def test_get_desloga_e_redireciona_para_landing(self):
+    def test_get_nao_desloga(self):
+        """
+        Regressão de A13.
+
+        Com logout por GET, um `<img src=".../accounts/logout/">` em qualquer
+        site deslogava quem abrisse a página. Foi por isso que o Django 5
+        removeu o suporte.
+        """
         user = create_user()
         self.client.force_login(user)
+
         response = self.client.get(reverse("accounts:logout"))
+
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse("landing"))
-        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertIn("_auth_user_id", self.client.session)
 
     def test_post_desloga_e_redireciona_para_landing(self):
         user = create_user()
@@ -378,6 +389,18 @@ class LogoutViewTest(TestCase):
         response = self.client.post(reverse("accounts:logout"))
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse("landing"))
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_menu_oferece_o_logout_por_formulario(self):
+        """O link antigo no menu precisava virar POST junto com a view."""
+        user = create_user()
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("landing"))
+
+        conteudo = response.content.decode()
+        self.assertIn(f'method="post" action="{reverse("accounts:logout")}"', conteudo)
+        self.assertNotIn(f'href="{reverse("accounts:logout")}"', conteudo)
 
 
 class ProfileViewTest(TestCase):
@@ -1060,3 +1083,261 @@ class PasswordResetRateLimitTest(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse("accounts:password_reset_done"))
+
+
+# ---------------------------------------------------------------------------
+# Sessão única sem varrer a tabela (A7)
+# ---------------------------------------------------------------------------
+
+
+class SessaoUnicaPorUsuarioTest(TestCase):
+    """
+    Regressão de A7.
+
+    O comportamento (uma sessão por usuário) é o mesmo; o que muda é o custo.
+    Antes: varredura de `django_session` + `get_decoded()` linha a linha, a cada
+    login. Agora: uma consulta pela chave guardada no perfil.
+    """
+
+    def setUp(self):
+        self.user = create_user(email="dono@example.com", password="SenhaForte123")
+        create_user(email="terceiro@example.com", password="SenhaForte123")
+
+    def _login(self, client):
+        return client.post(
+            reverse("accounts:login"),
+            {"username": "dono@example.com", "password": "SenhaForte123"},
+        )
+
+    def test_segundo_login_derruba_a_sessao_anterior(self):
+        primeiro = Client()
+        self._login(primeiro)
+        chave_antiga = primeiro.session.session_key
+
+        segundo = Client()
+        self._login(segundo)
+
+        self.assertFalse(Session.objects.filter(session_key=chave_antiga).exists())
+        self.assertTrue(Session.objects.filter(session_key=segundo.session.session_key).exists())
+
+    def test_sessao_de_outro_usuario_nao_e_derrubada(self):
+        outro = Client()
+        outro.post(
+            reverse("accounts:login"),
+            {"username": "terceiro@example.com", "password": "SenhaForte123"},
+        )
+        chave_do_terceiro = outro.session.session_key
+
+        self._login(Client())
+
+        self.assertTrue(Session.objects.filter(session_key=chave_do_terceiro).exists())
+
+    def test_perfil_guarda_a_sessao_vigente(self):
+        cliente = Client()
+        self._login(cliente)
+
+        self.user.profile.refresh_from_db()
+        self.assertEqual(self.user.profile.current_session_key, cliente.session.session_key)
+
+    def test_login_nao_decodifica_sessao_alguma(self):
+        """O `get_decoded()` por linha era o custo que crescia com o tráfego."""
+        for i in range(5):
+            outro = Client()
+            outro.force_login(create_user(email=f"ruido{i}@example.com"))
+
+        with patch.object(Session, "get_decoded", autospec=True) as mock_decode:
+            self._login(Client())
+
+        mock_decode.assert_not_called()
+
+    def test_clear_expired_sessions_remove_so_o_que_venceu(self):
+        agora = timezone.now()
+        Session.objects.create(
+            session_key="vencida", session_data="x", expire_date=agora - timedelta(days=1)
+        )
+        Session.objects.create(
+            session_key="valida", session_data="x", expire_date=agora + timedelta(days=1)
+        )
+
+        clear_expired_sessions()
+
+        self.assertFalse(Session.objects.filter(session_key="vencida").exists())
+        self.assertTrue(Session.objects.filter(session_key="valida").exists())
+
+
+# ---------------------------------------------------------------------------
+# Saldo derivado fora do formulário (A10)
+# ---------------------------------------------------------------------------
+
+
+class SaldoDerivadoTest(TestCase):
+    """
+    Regressão de A10.
+
+    `current_balance` é recalculado a cada trade, então o valor digitado pelo
+    usuário era descartado no primeiro trade seguinte — e mudar o saldo inicial
+    não disparava recálculo nenhum.
+    """
+
+    def setUp(self):
+        self.user = create_user()
+        self.profile = self.user.profile
+
+    def test_formulario_de_edicao_nao_expoe_saldo_atual(self):
+        self.assertNotIn("current_balance", ProfileEditForm().fields)
+
+    def test_formulario_de_cadastro_nao_expoe_saldo_atual(self):
+        self.assertNotIn("current_balance", ProfileForm().fields)
+
+    def test_alterar_saldo_inicial_recalcula_o_atual(self):
+        self.profile.initial_balance = Decimal("1000.00")
+        self.profile.current_balance = Decimal("1000.00")
+        self.profile.save()
+
+        form = ProfileEditForm(
+            data={
+                "country": "BR",
+                "experience_level": ExperienceLevel.BEGINNER,
+                "primary_market": PrimaryMarket.INDEX_FUTURES,
+                "trading_style": TradingStyle.DAY_TRADE,
+                "timezone": "America/Sao_Paulo",
+                "initial_balance": "5000.00",
+            },
+            instance=self.profile,
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        form.save()
+
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.initial_balance, Decimal("5000.00"))
+        self.assertEqual(self.profile.current_balance, Decimal("5000.00"))
+
+    def test_saldo_atual_no_cadastro_comeca_igual_ao_inicial(self):
+        response = self.client.post(
+            reverse("accounts:register"),
+            {
+                "email": "novato@example.com",
+                "first_name": "Novo",
+                "last_name": "Usuário",
+                "password1": "SenhaForte123",
+                "password2": "SenhaForte123",
+                "country": "Brasil",
+                "experience_level": ExperienceLevel.BEGINNER,
+                "primary_market": PrimaryMarket.INDEX_FUTURES,
+                "trading_style": TradingStyle.DAY_TRADE,
+                "terms_accepted": "on",
+                "privacy_accepted": "on",
+                "initial_balance": "2500.00",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        profile = User.objects.get(email="novato@example.com").profile
+        self.assertEqual(profile.initial_balance, Decimal("2500.00"))
+        self.assertEqual(profile.current_balance, Decimal("2500.00"))
+
+
+# ---------------------------------------------------------------------------
+# Dashboard do admin por permissão (A11)
+# ---------------------------------------------------------------------------
+
+
+class AdminDashboardPermissaoTest(TestCase):
+    """
+    Regressão de A11.
+
+    O contexto era montado para qualquer `is_staff`: um usuário com acesso só a
+    `trades` via os 20 últimos pagamentos, com valor e e-mail dos clientes.
+    """
+
+    def setUp(self):
+        self.staff = create_user(email="staff@example.com", password="SenhaForte123", is_staff=True)
+        self.superuser = create_user(
+            email="chefe@example.com", password="SenhaForte123", is_staff=True, is_superuser=True
+        )
+
+    def test_staff_sem_permissao_nao_ve_vendas(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get(reverse("admin:index"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("recent_sales", response.context)
+        self.assertNotIn("Últimas vendas", response.content.decode())
+
+    def test_staff_sem_permissao_nao_ve_contagem_de_assinantes(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get(reverse("admin:index"))
+
+        self.assertNotIn("active_subscribers_count", response.context)
+
+    def test_staff_com_permissao_de_pagamento_ve_vendas(self):
+        permissao = Permission.objects.get(
+            codename="view_payment", content_type__app_label="payments"
+        )
+        self.staff.user_permissions.add(permissao)
+        self.client.force_login(self.staff)
+
+        response = self.client.get(reverse("admin:index"))
+
+        self.assertIn("recent_sales", response.context)
+
+    def test_superuser_ve_tudo(self):
+        self.client.force_login(self.superuser)
+
+        response = self.client.get(reverse("admin:index"))
+
+        self.assertIn("recent_sales", response.context)
+        self.assertIn("active_subscribers_count", response.context)
+
+
+# ---------------------------------------------------------------------------
+# downgrade_expired_plans: consultas e log (A15)
+# ---------------------------------------------------------------------------
+
+
+class DowngradeExpiredPlansTest(TestCase):
+    """Regressão de A15: N+1 por `profile.user.email` e PII em log de INFO."""
+
+    def setUp(self):
+        self.user = create_user(email="expirado@example.com")
+        profile = self.user.profile
+        profile.plan = Plan.PREMIUM
+        profile.plan_expires_at = timezone.now() - timedelta(days=1)
+        profile.save()
+
+    def test_plano_expirado_vira_free(self):
+        with patch("discord_integration.tasks.sync_user_roles"):
+            self.assertEqual(downgrade_expired_plans(), 1)
+
+        self.user.profile.refresh_from_db()
+        self.assertEqual(self.user.profile.plan, Plan.FREE)
+        self.assertIsNone(self.user.profile.plan_expires_at)
+
+    def test_nao_registra_email_do_cliente_no_log(self):
+        with (
+            patch("discord_integration.tasks.sync_user_roles"),
+            self.assertLogs("accounts.tasks", level="INFO") as logs,
+        ):
+            downgrade_expired_plans()
+
+        registrado = "\n".join(logs.output)
+        self.assertNotIn("expirado@example.com", registrado)
+        self.assertIn(str(self.user.id), registrado)
+
+    def test_nao_faz_uma_consulta_de_usuario_por_perfil(self):
+        for i in range(4):
+            outro = create_user(email=f"expirado{i}@example.com")
+            perfil = outro.profile
+            perfil.plan = Plan.BASIC
+            perfil.plan_expires_at = timezone.now() - timedelta(days=2)
+            perfil.save()
+
+        with patch("discord_integration.tasks.sync_user_roles"):
+            # 1 select dos perfis + 1 update por perfil. O log usava
+            # `profile.user.email`, que disparava um select por perfil: com 5
+            # perfis vencidos eram 11 consultas em vez de 6.
+            with self.assertNumQueries(6):
+                downgrade_expired_plans()

@@ -155,6 +155,15 @@ class Profile(models.Model):
         null=True,
     )
 
+    # Guardar a sessão vigente evita varrer a tabela inteira de sessões a cada
+    # login para descobrir quais eram deste usuário. Ver `logout_other_sessions`.
+    current_session_key = models.CharField(
+        "sessão atual",
+        max_length=40,
+        blank=True,
+        db_index=True,
+    )
+
     created_at = models.DateTimeField("criado em", auto_now_add=True)
     updated_at = models.DateTimeField("atualizado em", auto_now=True)
 

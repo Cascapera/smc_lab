@@ -6,6 +6,7 @@ import logging
 
 from celery import shared_task
 from django.core.mail import EmailMultiAlternatives
+from django.core.management import call_command
 from django.utils import timezone
 
 from .models import Plan, Profile
@@ -42,6 +43,16 @@ def send_password_reset_email(
 
 
 @shared_task
+def clear_expired_sessions() -> None:
+    """Remove sessões expiradas da tabela.
+
+    Sem isto a `django_session` só cresce. Ela deixou de ser varrida a cada
+    login (A7), mas continua sendo lida em toda requisição autenticada.
+    """
+    call_command("clearsessions")
+
+
+@shared_task
 def downgrade_expired_plans() -> int:
     """
     Atualiza perfis com plano expirado para Free no banco.
@@ -61,17 +72,21 @@ def downgrade_expired_plans() -> int:
             profile.plan_expires_at = None
             profile.save(update_fields=["plan", "plan_expires_at"])
             count += 1
-            logger.info(
-                "[accounts] Plano expirado: %s (ID %d) → Free",
-                profile.user.email,
-                profile.user_id,
-            )
+            # Sem o e-mail: é dado pessoal e o log de INFO vai para arquivo e
+            # para o journal do container. O ID identifica igual.
+            logger.info("[accounts] Plano expirado: user_id=%s → Free", profile.user_id)
             try:
                 from discord_integration.tasks import sync_user_roles
 
                 sync_user_roles.delay(profile.user_id)
             except Exception as exc:
-                logger.debug("[accounts] sync_user_roles não disponível: %s", exc)
+                # Era DEBUG, que não aparece em produção: o usuário ficava com a
+                # role antiga no Discord e nada registrava o motivo.
+                logger.warning(
+                    "[accounts] Falha ao enfileirar sync_user_roles (user_id=%s): %s",
+                    profile.user_id,
+                    exc,
+                )
         except Exception as exc:
             logger.error(
                 "[accounts] Erro ao fazer downgrade de %s: %s",
