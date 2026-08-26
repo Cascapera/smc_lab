@@ -11,7 +11,7 @@ from accounts.models import Profile
 from .models import Trade
 
 
-def _recalculate_profile_balance(user) -> None:
+def recalculate_profile_balance(user) -> None:
     try:
         profile: Profile = user.profile
     except Profile.DoesNotExist:
@@ -28,12 +28,12 @@ def _recalculate_profile_balance(user) -> None:
 
 @receiver(post_save, sender=Trade)
 def update_balance_after_trade_save(sender, instance: Trade, **kwargs) -> None:
-    _recalculate_profile_balance(instance.user)
+    recalculate_profile_balance(instance.user)
 
 
 @receiver(post_delete, sender=Trade)
 def update_balance_after_trade_delete(sender, instance: Trade, **kwargs) -> None:
-    _recalculate_profile_balance(instance.user)
+    recalculate_profile_balance(instance.user)
 
 
 def _apagar_arquivo(campo) -> None:

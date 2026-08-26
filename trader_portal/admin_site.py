@@ -13,6 +13,12 @@ class SMCAdminSite(AdminSite):
     index_title = "Painel"
 
     def index(self, request, extra_context=None):
+        """Resumo do dashboard, cada bloco atrás da sua permissão.
+
+        Antes o contexto era montado para qualquer `is_staff`: um usuário com
+        acesso só a `trades` via os 20 últimos pagamentos, com valor e e-mail
+        dos clientes.
+        """
         extra_context = extra_context or {}
         from django.db.models import Q
         from django.utils import timezone
@@ -20,23 +26,23 @@ class SMCAdminSite(AdminSite):
         from accounts.models import Plan, Profile
         from payments.models import Payment, PaymentStatus
 
-        now = timezone.now()
-        active_subscribers_count = (
-            Profile.objects.exclude(plan=Plan.FREE)
-            .filter(Q(plan_expires_at__isnull=True) | Q(plan_expires_at__gt=now))
-            .count()
-        )
-        recent_sales = list(
-            Payment.objects.filter(status=PaymentStatus.APPROVED)
-            .select_related("user")
-            .order_by("-created_at")[:20]
-        )
-        extra_context.update(
-            {
-                "active_subscribers_count": active_subscribers_count,
-                "recent_sales": recent_sales,
-            }
-        )
+        if request.user.has_perm("accounts.view_profile"):
+            now = timezone.now()
+            extra_context["active_subscribers_count"] = (
+                Profile.objects.exclude(plan=Plan.FREE)
+                .filter(Q(plan_expires_at__isnull=True) | Q(plan_expires_at__gt=now))
+                .count()
+            )
+            extra_context["pode_ver_assinantes"] = True
+
+        if request.user.has_perm("payments.view_payment"):
+            extra_context["recent_sales"] = list(
+                Payment.objects.filter(status=PaymentStatus.APPROVED)
+                .select_related("user")
+                .order_by("-created_at")[:20]
+            )
+            extra_context["pode_ver_vendas"] = True
+
         return super().index(request, extra_context)
 
 

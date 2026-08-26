@@ -24,7 +24,10 @@
           {% endif %}
           <a class="btn" href="{% url 'trades:trade_add' %}">Novo Trade</a>
           <a class="btn" href="{% url 'accounts:profile' %}">Perfil</a>
-          <a class="btn" href="{% url 'accounts:logout' %}">Sair</a>
+          <form class="form-logout" method="post" action="{% url 'accounts:logout' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn">Sair</button>
+          </form>
         {% else %}
           <a class="btn btn-primary" href="{% url 'accounts:register' %}">Cadastrar</a>
           <a class="btn" href="{% url 'accounts:login' %}">Entrar</a>
@@ -54,7 +57,10 @@
           {% endif %}
           <a class="btn btn-block" href="{% url 'trades:trade_add' %}">Novo Trade</a>
           <a class="btn btn-block" href="{% url 'accounts:profile' %}">Perfil</a>
-          <a class="btn btn-block" href="{% url 'accounts:logout' %}">Sair</a>
+          <form class="form-logout-block" method="post" action="{% url 'accounts:logout' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-block">Sair</button>
+          </form>
         {% else %}
           <a class="btn btn-primary btn-block" href="{% url 'accounts:register' %}">Cadastrar</a>
           <a class="btn btn-block" href="{% url 'accounts:login' %}">Entrar</a>

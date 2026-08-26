@@ -190,6 +190,13 @@
             box-shadow: 0 22px 70px rgba(34,211,238,.20);
         }
         .nav-actions{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+        /* O "Sair" virou <button> dentro de <form method="post"> (logout por GET
+           permitia deslogar o usuário de qualquer site). O <button> não herda a
+           fonte da página, então precisa destas quatro linhas para ficar
+           idêntico aos links vizinhos. */
+        button.btn{ font-family: inherit; line-height: 1.1; cursor: pointer; }
+        .form-logout{ display:inline-flex; margin:0; }
+        .form-logout-block{ display:block; width:100%; margin:0; }
         .logo-img{ height:60px; width:auto; display:block; }
 
         /* Hamburger (oculto no desktop) */

@@ -145,6 +145,10 @@ EMAIL_BACKEND = env(
         else "django.core.mail.backends.console.EmailBackend"
     ),
 )
+# Sem timeout, uma conexão SMTP pendurada segura o worker do gunicorn até o
+# timeout dele. O envio virou task, mas o valor vale também para o fallback
+# síncrono e para qualquer outro e-mail enviado do request.
+EMAIL_TIMEOUT = env.int("DJANGO_EMAIL_TIMEOUT", default=10)
 DEFAULT_FROM_EMAIL = env("DJANGO_DEFAULT_FROM_EMAIL", default="noreply@smclab.com.br")
 SERVER_EMAIL = env("DJANGO_SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
 
@@ -237,6 +241,20 @@ CELERY_WORKER_GRACEFUL_TIMEOUT = 300
 # Tarefa re-enfileirada se worker morrer antes de concluir (evita perda de coleta)
 CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
+# Filas separadas (A9). Com um único worker `--pool=solo`, a sincronização do
+# Discord das 04:00 e a coleta macro disputavam o mesmo processo: enquanto a
+# sync varria os perfis, o painel macro parava de atualizar. O mesmo valia para
+# o e-mail de recuperação de senha, que passou a ser task no PR-4.1 e ficaria
+# atrás de um ciclo de coleta de ~150s.
+#
+# `celery` continua sendo a fila padrão (nada some se uma task nova não for
+# roteada aqui) e é consumida pelo mesmo worker da `macro`.
+CELERY_TASK_ROUTES = {
+    "macro.tasks.*": {"queue": "macro"},
+    "discord_integration.tasks.*": {"queue": "interativo"},
+    "accounts.tasks.send_password_reset_email": {"queue": "interativo"},
+}
+
 CELERY_BEAT_SCHEDULE = {
     "macro-collect-every-5min": {
         "task": "macro.tasks.collect_macro_cycle",
@@ -248,6 +266,13 @@ CELERY_BEAT_SCHEDULE = {
         # ciclos duplicados. Com 4 minutos, a coleta que não conseguiu começar
         # a tempo é descartada e esperamos o próximo agendamento.
         "options": {"expires": 240},
+    },
+    # Sessões expiradas não somem sozinhas do banco. Roda antes da coleta do
+    # dia começar a pesar e depois da limpeza do macro.
+    "clear-expired-sessions-daily": {
+        "task": "accounts.tasks.clear_expired_sessions",
+        "schedule": crontab(minute=50, hour=3),
+        "options": {"expires": 3600},
     },
     "discord-sync-daily": {
         "task": "discord_integration.tasks.sync_all_discord_roles",

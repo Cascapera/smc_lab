@@ -5,6 +5,7 @@
 
 {% block content %}
 <div id="content-main">
+  {% if pode_ver_assinantes %}
   <div class="module" style="margin-bottom: 1.5rem;">
     <table style="width: auto;">
       <caption><h2 style="margin: 0 0 0.5rem 0;">Assinantes ativos</h2></caption>
@@ -19,7 +20,9 @@
       Contagem baseada em perfis com plano diferente de Free e sem expiração ou com data de expiração futura.
     </p>
   </div>
+  {% endif %}
 
+  {% if pode_ver_vendas %}
   <div class="module" style="margin-bottom: 1.5rem;">
     <h2 style="margin: 0 0 0.75rem 0;">Últimas vendas</h2>
     <p class="help" style="margin-top: 0;">Pagamentos com status <strong>Aprovado</strong> (mais recentes primeiro).</p>
@@ -52,6 +55,7 @@
     <p>Nenhum pagamento aprovado registrado ainda.</p>
     {% endif %}
   </div>
+  {% endif %}
 
   {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
 </div>

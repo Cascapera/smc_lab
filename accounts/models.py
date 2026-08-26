@@ -155,12 +155,32 @@ class Profile(models.Model):
         null=True,
     )
 
+    # Guardar a sessão vigente evita varrer a tabela inteira de sessões a cada
+    # login para descobrir quais eram deste usuário. Ver `logout_other_sessions`.
+    current_session_key = models.CharField(
+        "sessão atual",
+        max_length=40,
+        blank=True,
+        db_index=True,
+    )
+
     created_at = models.DateTimeField("criado em", auto_now_add=True)
     updated_at = models.DateTimeField("atualizado em", auto_now=True)
 
     class Meta:
         verbose_name = "perfil"
         verbose_name_plural = "perfis"
+        constraints = [
+            # Duas contas no mesmo Discord se anulavam na sincronização diária:
+            # ela processa por pk, então a conta free removia a role que a conta
+            # paga tinha acabado de receber. A condição existe porque conta sem
+            # Discord grava string vazia, não NULL.
+            models.UniqueConstraint(
+                fields=["discord_user_id"],
+                condition=~models.Q(discord_user_id=""),
+                name="perfil_discord_user_id_unico",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"Perfil de {self.user}"
