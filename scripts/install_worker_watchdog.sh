@@ -12,7 +12,11 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 WATCHDOG_SCRIPT="$PROJECT_DIR/scripts/worker_watchdog.sh"
 RESTART_SCRIPT="$PROJECT_DIR/scripts/restart_worker_daily.sh"
 DOCKER_PRUNE_SCRIPT="$PROJECT_DIR/scripts/docker_prune.sh"
-CRON_WATCHDOG="*/18 * * * * $WATCHDOG_SCRIPT"
+# Minuto 7 de cada hora ímpar de trabalho não é arbitrário: a coleta roda em
+# `*/5` (minutos 00, 05, 10...) e o `*/18` batia no minuto 00 a cada três horas,
+# medindo o heartbeat exatamente enquanto o ciclo começava. Um minuto que a
+# coleta nunca ocupa dá leitura estável.
+CRON_WATCHDOG="7,27,47 * * * * $WATCHDOG_SCRIPT"
 CRON_RESTART="4 6,13,22 * * * $RESTART_SCRIPT"
 CRON_DOCKER_PRUNE="0 3 * * 0 $DOCKER_PRUNE_SCRIPT"
 

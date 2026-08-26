@@ -32,18 +32,25 @@ SECRET_KEY = env(
 
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=["127.0.0.1", "localhost"])
 
-INSTALLED_APPS += ["debug_toolbar"]  # noqa: F405
+# Debug Toolbar: painel lateral com queries SQL e tempo de request.
+#
+# O import é condicional porque `django-debug-toolbar` saiu do
+# `requirements.txt` (ia junto para a imagem de produção) e agora só está no
+# `requirements-dev.txt`. Quem rodar dev com as dependências de produção
+# continua funcionando, sem o painel.
+try:
+    import debug_toolbar  # noqa: F401
 
-INTERNAL_IPS = ["127.0.0.1", "localhost"]
-
-MIDDLEWARE = [
-    "debug_toolbar.middleware.DebugToolbarMiddleware",
-] + MIDDLEWARE  # noqa: F405
-
-# Debug Toolbar: mostra painel lateral com queries SQL e tempo de request
-DEBUG_TOOLBAR_CONFIG = {
-    "SHOW_TOOLBAR_CALLBACK": lambda request: DEBUG,
-}
+    INSTALLED_APPS += ["debug_toolbar"]  # noqa: F405
+    INTERNAL_IPS = ["127.0.0.1", "localhost"]
+    MIDDLEWARE = [
+        "debug_toolbar.middleware.DebugToolbarMiddleware",
+    ] + MIDDLEWARE  # noqa: F405
+    DEBUG_TOOLBAR_CONFIG = {
+        "SHOW_TOOLBAR_CALLBACK": lambda request: DEBUG,
+    }
+except ImportError:  # pragma: no cover - só acontece fora do ambiente de dev
+    pass
 
 # Mesmos loggers JSON do macro que em produção (merge sobre o DEFAULT_LOGGING do Django)
 from django.utils.log import DEFAULT_LOGGING  # noqa: E402

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-import sys
+import os
+import warnings
 from decimal import Decimal
 from pathlib import Path
 
@@ -26,7 +27,45 @@ if ENV_FILE.exists():
     environ.Env.read_env(str(ENV_FILE))
 
 LOG_DIR = Path(env("DJANGO_LOG_DIR", default=str(BASE_DIR / "logs")))
-LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _preparar_log_dir() -> bool:
+    """Cria o diretório de log e diz se dá para escrever nele.
+
+    Isto era um `LOG_DIR.mkdir()` solto no import do settings. Funciona
+    enquanto o container roda como root; no dia em que ele deixar de rodar (ou
+    num filesystem read-only) o `PermissionError` sobe no *import* — antes de
+    qualquer logger existir. Resultado: gunicorn, celery e todo `manage.py`
+    morrem sem dizer por quê.
+
+    Quem depende disto é só o `macro_errors.log`, um canal secundário: o
+    console já recebe tudo e o Docker o captura. Sem permissão, seguimos com
+    console e avisamos — em vez de derrubar o processo por um arquivo de log.
+    """
+    try:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        warnings.warn(
+            f"[settings] Sem permissão para criar {LOG_DIR} ({exc}). "
+            "Logs em arquivo desligados; o console continua completo.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return False
+
+    if not os.access(LOG_DIR, os.W_OK):
+        warnings.warn(
+            f"[settings] {LOG_DIR} existe mas não é gravável. "
+            "Logs em arquivo desligados; o console continua completo.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return False
+
+    return True
+
+
+LOG_DIR_GRAVAVEL = _preparar_log_dir()
 
 
 def _decimal_env(name: str, default: str) -> Decimal:
@@ -114,6 +153,10 @@ DATABASES = {
     "default": env.db("DATABASE_URL", default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}"),
 }
 DATABASES["default"]["ATOMIC_REQUESTS"] = True
+# Conexão reaproveitada por 60s em vez de uma nova a cada requisição. O painel
+# macro faz polling de três endpoints a cada minuto por aba aberta; cada um
+# abria e fechava conexão com o Postgres.
+DATABASES["default"]["CONN_MAX_AGE"] = env.int("DJANGO_CONN_MAX_AGE", default=60)
 
 # --------------------------------------------------------------------------------------
 # Cache (rate limiting, etc.)
@@ -127,8 +170,14 @@ CACHES = {
     }
 }
 
-# django-ratelimit: desabilitado automaticamente ao rodar manage.py test
-RATELIMIT_ENABLE = "test" not in sys.argv and env.bool("RATELIMIT_ENABLE", default=True)
+# django-ratelimit.
+#
+# Era `"test" not in sys.argv`, o que desligava a proteção em QUALQUER comando
+# com a palavra `test` num argumento — `manage.py loaddata test.json` rodava sem
+# rate limit. Pior: nenhum teste exercitava o rate limit, porque ele estava
+# sempre desligado durante a suíte. Hoje o desligamento é explícito no `ci.py`,
+# e os testes que precisam dele ligam com `override_settings`.
+RATELIMIT_ENABLE = env.bool("RATELIMIT_ENABLE", default=True)
 
 # --------------------------------------------------------------------------------------
 # Email (recuperação de senha e notificações) - GoDaddy SMTP
@@ -236,8 +285,10 @@ CELERY_TIMEZONE = TIME_ZONE
 CELERY_ENABLE_UTC = USE_TZ
 # Evita warning no Celery 6+: retry de conexão com broker na inicialização
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
-# Se o worker receber SIGTERM, espera até 5 min para a tarefa atual terminar
-CELERY_WORKER_GRACEFUL_TIMEOUT = 300
+# Nota: `CELERY_WORKER_GRACEFUL_TIMEOUT` esteve aqui com o comentário "espera
+# até 5 min para a tarefa atual terminar". A chave não existe no Celery
+# (conferido em `celery.app.defaults`), então nunca fez nada — a espera real vem
+# do `stop_grace_period` do docker-compose, que está em 5m no worker.
 # Tarefa re-enfileirada se worker morrer antes de concluir (evita perda de coleta)
 CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True

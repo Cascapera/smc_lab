@@ -5,8 +5,11 @@ default_language_version:
   python: python3.13
 
 repos:
+  # Mesma versão do CI e do requirements-dev.txt. Com as três divergindo
+  # (hook v0.8.0, CI `latest`, venv local 0.15.2), o CI reprovava formatação
+  # que o hook tinha acabado de aprovar.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.0
+    rev: v0.15.2
     hooks:
       - id: ruff
       - id: ruff-format

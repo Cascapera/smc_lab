@@ -58,9 +58,9 @@ jobs:
             git reset --hard origin/main
             echo '>>> Docker Compose build e up'
             docker compose pull
-            docker compose build --no-cache web worker beat
-            echo '>>> Parando worker e beat antes de recriar (evita erro ao remover container em execução)'
-            docker compose stop worker beat || true
+            docker compose build --no-cache web worker worker_interativo beat
+            echo '>>> Parando workers e beat antes de recriar (evita erro ao remover container em execução)'
+            docker compose stop worker worker_interativo beat || true
             docker compose up -d
             echo '>>> Aguardando containers'
             sleep 15

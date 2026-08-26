@@ -23,7 +23,16 @@ DATABASES = {
 
 # Desabilita integrações externas durante testes
 CELERY_TASK_ALWAYS_EAGER = True  # Executa tasks síncronamente (sem Redis)
-CELERY_TASK_EAGER_PROPAGATION = True
+# `CELERY_TASK_EAGER_PROPAGATION` (sem o S) não existe: era um typo silencioso.
+# Com ele, exceção dentro de uma task ficava presa no EagerResult e o teste
+# passava com a task quebrada.
+CELERY_TASK_EAGER_PROPAGATES = True
+
+# Rate limit desligado por padrão na suíte — os testes que o exercitam ligam
+# com `override_settings(RATELIMIT_ENABLE=True)`. Antes isto vinha de
+# `"test" not in sys.argv` no base.py, o que também desligava a proteção em
+# comandos que só tivessem a palavra `test` num argumento.
+RATELIMIT_ENABLE = False
 
 # Cache em memória (sem Redis)
 CACHES = {
