@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import logging
+
 from django.contrib import messages
 from django.contrib.auth import get_user_model, logout
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView as DjangoLoginView
+from django.contrib.auth.views import PasswordResetView as DjangoPasswordResetView
+from django.db import IntegrityError
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse, reverse_lazy
@@ -13,8 +17,16 @@ from django.views import View
 from django.views.generic import TemplateView
 from django_ratelimit.decorators import ratelimit
 
-from .forms import EmailAuthenticationForm, ProfileEditForm, ProfileForm, UserRegistrationForm
+from .forms import (
+    AsyncPasswordResetForm,
+    EmailAuthenticationForm,
+    ProfileEditForm,
+    ProfileForm,
+    UserRegistrationForm,
+)
 from .ratelimit import client_ip_key
+
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
@@ -73,7 +85,19 @@ class RegisterView(View):
         profile_form = ProfileForm(request.POST)
 
         if user_form.is_valid() and profile_form.is_valid():
-            user = user_form.save()
+            try:
+                user = user_form.save()
+            except IntegrityError:
+                # `clean_email` já barra o duplicado, mas duas requisições
+                # simultâneas com o mesmo e-mail passam as duas pela validação.
+                # Sem isto, a perdedora vira 500 no cadastro.
+                logger.warning("[accounts] Cadastro simultâneo com e-mail duplicado.")
+                user_form.add_error("email", "Já existe uma conta cadastrada com este e-mail.")
+                return render(
+                    request,
+                    self.template_name,
+                    {"user_form": user_form, "profile_form": profile_form},
+                )
             profile = user.profile
             cleaned_data = profile_form.cleaned_data
             for field, value in cleaned_data.items():
@@ -101,6 +125,41 @@ class RegisterView(View):
                 "profile_form": profile_form,
             },
         )
+
+
+@method_decorator(
+    ratelimit(key=client_ip_key, rate="5/h", method="POST", block=False),
+    name="post",
+)
+@method_decorator(
+    # Segundo balde, por destinatário: sem ele, uma botnet com IPs diferentes
+    # ainda esgota a cota de envio da GoDaddy contra um único e-mail e enche a
+    # caixa de quem nunca pediu recuperação nenhuma.
+    ratelimit(key="post:email", rate="3/h", method="POST", block=False),
+    name="post",
+)
+class PasswordResetView(DjangoPasswordResetView):
+    """Recuperação de senha com rate limit e envio fora do request.
+
+    Antes eram 500 POSTs = 500 e-mails via GoDaddy (cota baixa), cada um
+    segurando um worker pelo tempo do SMTP.
+    """
+
+    template_name = "accounts/password_reset.html"
+    email_template_name = "accounts/password_reset_email.html"
+    subject_template_name = "accounts/password_reset_subject.txt"
+    form_class = AsyncPasswordResetForm
+    success_url = reverse_lazy("accounts:password_reset_done")
+
+    def post(self, request, *args, **kwargs):
+        if getattr(request, "limited", False):
+            messages.warning(
+                request,
+                "Muitas solicitações de recuperação. Aguarde alguns minutos antes de "
+                "tentar novamente.",
+            )
+            return redirect(reverse("accounts:password_reset"))
+        return super().post(request, *args, **kwargs)
 
 
 class LogoutView(View):
