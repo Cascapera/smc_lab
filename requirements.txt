@@ -21,6 +21,16 @@ openpyxl==3.1.5
 playwright==1.49.0
 celery==5.3.6
 redis==5.0.8
+# Dependências transitivas do Celery, fixadas na combinação que rodava em
+# produção. Soltas, o rebuild de 2026-11-05 pegou kombu 5.7.0 (lançado dois
+# dias antes), que exige redis-py >= 6.1: worker, worker_interativo e beat
+# morriam na partida com VersionMismatch e a coleta parou. O celery 5.3.6
+# limita o redis a < 6, então quem tem de ficar parado é o kombu.
+kombu==5.6.2
+amqp==5.3.1
+billiard==4.2.4
+vine==5.1.0
+click-repl==0.3.0
 
 # Análise por IA (OpenAI GPT)
 openai==1.55.3
