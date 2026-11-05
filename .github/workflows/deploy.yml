@@ -185,19 +185,61 @@ jobs:
           fi
           echo ">>> gunicorn respondeu (HTTP ${codigo})"
 
+          # -------------------------------------------------------------------
+          # Servicos de pe - e continuando de pe.
+          #
+          # Esta checagem contava `docker compose ps -q`, que lista tambem
+          # container em loop de reinicio. Em 2026-11-05 o kombu 5.7.0 derrubava
+          # worker, worker_interativo e beat na partida; o `ps` mostrava
+          # "Restarting (1)", a conta deu 6 de 6 e o deploy saiu verde com a
+          # coleta parada por mais de duas horas.
+          #
+          # Agora cada container e lido duas vezes pelo `docker inspect`, com
+          # um intervalo no meio. Passa so quem esta `running` na segunda
+          # leitura e nao reiniciou entre as duas (mesmo RestartCount e mesmo
+          # StartedAt). Um olhar unico nao basta: logo depois do `up -d`, um
+          # container que vai morrer em 2 s ainda aparece como running.
+          # `docker inspect -f` existe em qualquer versao do Docker, ao
+          # contrario do `--format` do `compose ps`.
+          # -------------------------------------------------------------------
           echo '>>> Servicos de pe'
-          docker compose ps
           esperado=6
-          # `ps -q` conta so o que esta rodando e existe em toda versao do
-          # compose; `--status running --format '{{.Service}}'` seria mais
-          # preciso, mas o template de Go no `ps` e recente demais para apostar
-          # na versao instalada no servidor.
-          de_pe="$(docker compose ps -q | grep -c . || true)"
-          if [ "${de_pe:-0}" -ne "$esperado" ]; then
-            echo "ERRO: ${de_pe:-0} de ${esperado} servicos rodando."
-            docker compose logs --tail 30
+          janela=20
+          ids="$(docker compose ps -aq)"
+          total="$(printf '%s\n' "$ids" | grep -c . || true)"
+          if [ "${total:-0}" -ne "$esperado" ]; then
+            docker compose ps -a
+            echo "ERRO: ${total:-0} de ${esperado} containers existem."
             exit 1
           fi
+
+          estado_dos_containers() {
+            # shellcheck disable=SC2086 # um id por palavra, de proposito
+            docker inspect -f \
+              '{{.Name}} {{.State.Status}} {{.RestartCount}} {{.State.StartedAt}}' $ids
+          }
+          antes="$(estado_dos_containers)"
+          sleep "$janela"
+          depois="$(estado_dos_containers)"
+          docker compose ps
+
+          problemas=""
+          while read -r nome status reinicios inicio; do
+            linha_antes="$(printf '%s\n' "$antes" | grep "^${nome} " || true)"
+            if [ "$status" != "running" ]; then
+              problemas="${problemas}${nome#/}: ${status}"$'\n'
+            elif [ "$linha_antes" != "${nome} ${status} ${reinicios} ${inicio}" ]; then
+              problemas="${problemas}${nome#/}: reiniciou nos ultimos ${janela}s"$'\n'
+            fi
+          done <<< "$depois"
+
+          if [ -n "$problemas" ]; then
+            echo "ERRO: servicos que nao ficaram de pe:"
+            printf '%s' "$problemas"
+            docker compose logs --tail 40
+            exit 1
+          fi
+          echo ">>> ${esperado} de ${esperado} servicos de pe e estaveis por ${janela}s"
 
           echo '>>> /healthz'
           curl -s --max-time 5 -H 'X-Forwarded-Proto: https' \
